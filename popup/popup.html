@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>b量子阅读</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>b量子阅读</h1>
+      <div class="header-actions">
+        <button id="helpBtn" class="icon-btn" title="使用说明">❓</button>
+        <button id="settingsBtn" class="icon-btn" title="设置">⚙</button>
+      </div>
+    </header>
+
+    <div id="stayOnTabWarning" class="warning-banner" hidden>
+      ⚠️ 正在处理中，请勿关闭此窗口，否则处理将中断
+    </div>
+
+    <div id="notBilibili" class="status-msg" hidden>
+      请在B站视频页面使用此扩展
+    </div>
+
+    <div id="mainPanel" hidden>
+      <div class="video-info">
+        <h2 id="videoTitle" class="video-title">加载中...</h2>
+        <div class="video-meta">
+          <span id="videoUp"></span>
+          <span id="videoDuration"></span>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="extractBtn" class="btn btn-primary">
+          <span class="btn-icon">📝</span> 提取字幕
+        </button>
+        <button id="asrBtn" class="btn btn-secondary" hidden>
+          <span class="btn-icon">🎤</span> 语音识别
+        </button>
+        <div id="whisperStatus" class="whisper-status" hidden>
+          <span class="whisper-dot"></span>
+          <span id="whisperStatusText">Whisper: 检测中...</span>
+          <span id="whisperModelInfo" class="whisper-model-info" hidden></span>
+          <button id="startServiceBtn" class="btn btn-start-service" hidden>🚀 一键启动</button>
+        </div>
+      </div>
+
+      <div id="progress" class="progress" hidden>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span id="progressText">正在提取...</span>
+        <button id="cancelBtn" class="btn btn-cancel" hidden>取消</button>
+      </div>
+
+      <div id="resultPanel" hidden>
+        <div class="result-header">
+          <h3>提取结果</h3>
+          <div class="result-actions">
+            <button id="downloadBtn" class="btn btn-success">💾 下载 Markdown</button>
+          </div>
+        </div>
+        <div id="resultStats" class="result-stats"></div>
+        <div id="preview" class="preview"></div>
+      </div>
+
+      <div id="errorMsg" class="error-msg" hidden></div>
+    </div>
+  </div>
+
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

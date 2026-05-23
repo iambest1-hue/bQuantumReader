@@ -1,0 +1,42 @@
+{
+  "manifest_version": 3,
+  "name": "b量子阅读",
+  "version": "0.1.0",
+  "description": "从B站视频提取内容，整理为结构化Markdown，打造个人知识库",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "downloads",
+    "offscreen",
+    "notifications",
+    "nativeMessaging"
+  ],
+  "host_permissions": [
+    "https://api.bilibili.com/*",
+    "https://*.bilibili.com/*",
+    "http://localhost:8787/*"
+  ],
+  "action": {
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background/background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.bilibili.com/video/*"],
+      "js": ["content/content.js"]
+    }
+  ],
+  "options_page": "options/options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

@@ -1,0 +1,6 @@
+.claude/
+server.log
+__pycache__/
+*.pyc
+_pack.ps1
+gen_bat.ps1

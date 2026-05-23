@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>b量子阅读 - 设置</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: #333;
+    }
+    h1 { color: #fb7299; margin-bottom: 24px; }
+    h2 { font-size: 16px; margin: 24px 0 12px; color: #555; }
+    .field { margin-bottom: 16px; }
+    label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 13px; }
+    input, select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    input:focus, select:focus { outline: none; border-color: #fb7299; }
+    .hint { font-size: 12px; color: #999; margin-top: 4px; }
+    .btn {
+      background: #fb7299;
+      color: white;
+      border: none;
+      padding: 10px 24px;
+      border-radius: 6px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    .btn:hover { background: #e8658a; }
+    .saved { color: #00a86b; font-size: 13px; margin-left: 12px; opacity: 0; transition: opacity 0.3s; }
+    .saved.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>b量子阅读 设置</h1>
+
+  <h2>语音识别 (Whisper)</h2>
+  <p class="hint">无CC字幕的视频可使用本地 Whisper 语音识别。需先启动 whisper_server/server.py。</p>
+
+  <div class="field">
+    <label>Whisper 服务地址</label>
+    <input type="text" id="whisperServerUrl" placeholder="http://localhost:8787">
+    <p class="hint">本地 Whisper 服务的地址，默认 http://localhost:8787</p>
+  </div>
+
+  <div class="field">
+    <button class="btn btn-sm" id="testWhisperBtn" style="background:#666;margin-top:0">测试连接</button>
+    <span id="whisperTestResult" style="font-size:13px;margin-left:8px"></span>
+  </div>
+
+  <h2>AI 智能分段 (可选)</h2>
+  <p class="hint">配置大模型 API 后，提取的内容将自动按主题智能分段。不配置则按时间戳分段。</p>
+
+  <div class="field">
+    <label>API 服务商</label>
+    <select id="aiProvider">
+      <option value="">不使用 AI 分段</option>
+      <option value="openai">OpenAI (GPT)</option>
+      <option value="deepseek">DeepSeek</option>
+      <option value="custom">自定义</option>
+    </select>
+  </div>
+
+  <div class="field" id="apiKeyField" hidden>
+    <label>API Key</label>
+    <input type="password" id="apiKey" placeholder="sk-...">
+    <p class="hint">密钥仅保存在本地浏览器中，不会上传</p>
+  </div>
+
+  <div class="field" id="apiBaseField" hidden>
+    <label>API Base URL</label>
+    <input type="text" id="apiBase" placeholder="https://api.openai.com/v1">
+  </div>
+
+  <div class="field" id="aiModelField" hidden>
+    <label>模型</label>
+    <input type="text" id="aiModel" placeholder="gpt-4o-mini">
+  </div>
+
+  <button class="btn" id="saveBtn">保存设置</button>
+  <span class="saved" id="savedHint">已保存</span>
+
+  <script src="options.js"></script>
+</body>
+</html>
