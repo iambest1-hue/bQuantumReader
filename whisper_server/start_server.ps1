@@ -7,7 +7,7 @@ param(
     [int]$Port = 8787
 )
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 Set-Location $scriptDir
 $ErrorActionPreference = "Continue"
 
@@ -21,38 +21,39 @@ Write-Host ""
 # ====== 查找 Python / Find Python ======
 Write-Host "[1/4] 查找 Python 环境 / Finding Python..." -ForegroundColor Cyan
 $pyCmd = $null
+
+# 候选列表：python3, python, py（launcher）, 以及已安装目录
+$candidates = @()
 foreach ($cmd in @("python3", "python", "py")) {
-    $result = Get-Command $cmd -ErrorAction SilentlyContinue
-    if ($result) {
-        $pyCmd = $cmd
+    $r = Get-Command $cmd -ErrorAction SilentlyContinue
+    if ($r) { $candidates += $cmd }
+}
+foreach ($pattern in @("$env:LocalAppData\Programs\Python\Python3*", "$env:ProgramFiles\Python3*")) {
+    $dirs = Get-Item $pattern -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+    foreach ($dir in $dirs) {
+        $exe = Join-Path $dir.FullName "python.exe"
+        if (Test-Path $exe) { $candidates += $exe }
+    }
+}
+
+# 逐个验证：版本号 + pip 同时可用
+foreach ($c in $candidates) {
+    $ver = & $c --version 2>&1
+    if ($LASTEXITCODE -ne 0) { continue }
+    $pipVer = & $c -m pip --version 2>&1
+    if ($LASTEXITCODE -eq 0) {
+        $pyCmd = $c
         break
     }
-}
-
-# Search known install locations
-if (-not $pyCmd) {
-    $searchPaths = @(
-        "$env:LocalAppData\Programs\Python\Python3*",
-        "$env:ProgramFiles\Python3*"
-    )
-    foreach ($pattern in $searchPaths) {
-        $dirs = Get-Item $pattern -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-        foreach ($dir in $dirs) {
-            $exe = Join-Path $dir.FullName "python.exe"
-            if (Test-Path $exe) {
-                $pyCmd = $exe
-                break
-            }
-        }
-        if ($pyCmd) { break }
-    }
+    Write-Host "       $c 已找到但无 pip（可能是 Store 版本），跳过..." -ForegroundColor DarkGray
 }
 
 if (-not $pyCmd) {
-    Write-Host "[FAIL] 未找到 Python / Python not found" -ForegroundColor Red
+    Write-Host "[FAIL] 未找到可用的 Python / No usable Python found" -ForegroundColor Red
     Write-Host ""
     Write-Host "请安装 Python 3.8+ : https://python.org" -ForegroundColor Yellow
-    Write-Host "安装时务必勾选 `"Add Python to PATH`"" -ForegroundColor Yellow
+    Write-Host "安装时务必勾选 Add Python to PATH" -ForegroundColor Yellow
+    Write-Host "如果已安装但 pip 不可用，请运行: python -m ensurepip" -ForegroundColor Yellow
     Write-Host ""
     Read-Host "Press Enter to exit"
     exit 1
@@ -82,10 +83,11 @@ if ($LASTEXITCODE -ne 0) {
 
 if ($missing) {
     Write-Host "[INFO] 正在安装依赖包 / Installing dependencies..." -ForegroundColor Yellow
+    Write-Host "       目录: $(Get-Location)" -ForegroundColor DarkGray
     & $pyCmd -m pip install -r requirements.txt
     if ($LASTEXITCODE -ne 0) {
         Write-Host "[FAIL] 安装失败 / Install failed" -ForegroundColor Red
-        Write-Host "请手动执行: pip install -r requirements.txt" -ForegroundColor Yellow
+        Write-Host "手动执行: cd whisper_server && $pyCmd -m pip install -r requirements.txt" -ForegroundColor Yellow
         Read-Host "Press Enter to exit"
         exit 1
     }
