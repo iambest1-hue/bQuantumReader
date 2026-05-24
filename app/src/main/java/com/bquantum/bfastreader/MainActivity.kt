@@ -2,6 +2,7 @@ package com.bquantum.bfastreader
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
@@ -21,6 +22,7 @@ class MainActivity : ComponentActivity() {
                 var showSettings by remember { mutableStateOf(false) }
 
                 if (showSettings) {
+                    BackHandler { showSettings = false }
                     SettingsScreen(onBack = { showSettings = false })
                 } else {
                     HomeScreen(onSettings = { showSettings = true })
