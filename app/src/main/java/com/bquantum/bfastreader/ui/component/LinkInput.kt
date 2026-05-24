@@ -9,11 +9,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -49,23 +48,19 @@ fun LinkInput(
             enabled = enabled
         )
 
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
 
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
+            TextButton(
                 onClick = {
                     clipboardManager.getText()?.text?.let { onUrlChange(it) }
                 }
             ) {
-                Icon(
-                    Icons.Default.ContentPaste,
-                    contentDescription = "粘贴",
-                    modifier = Modifier.size(20.dp)
-                )
+                Text("粘贴", style = MaterialTheme.typography.labelLarge)
             }
 
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -82,13 +77,17 @@ fun LinkInput(
                     )
                 }
 
-                FilledIconButton(
+                Button(
                     onClick = onParse,
-                    enabled = enabled && url.isNotBlank()
+                    enabled = enabled && url.isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
                 ) {
-                    Icon(Icons.Default.Search, contentDescription = "解析")
+                    Text("量子阅读")
                 }
             }
         }
     }
 }
+
