@@ -1,0 +1,213 @@
+package com.bquantum.bfastreader.data.repository
+
+import com.bquantum.bfastreader.data.api.BiliApiService
+import com.bquantum.bfastreader.data.api.WbiSign
+import com.bquantum.bfastreader.data.model.Comment
+import com.bquantum.bfastreader.data.model.CommentResponse
+import com.bquantum.bfastreader.data.model.SubtitleBody
+import com.bquantum.bfastreader.data.model.SubtitleEntry
+import com.bquantum.bfastreader.data.model.VideoInfo
+import com.google.gson.Gson
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+
+class VideoRepository(
+    private val api: BiliApiService,
+    private val wbiSign: WbiSign,
+    private val okHttpClient: OkHttpClient,
+    private val gson: Gson
+) {
+    suspend fun getVideoInfo(bvid: String): VideoInfo {
+        val response = api.getVideoInfo(bvid)
+        if (response.code != 0 || response.data == null) {
+            throw Exception(response.message.ifEmpty { "获取视频信息失败" })
+        }
+        val video = response.data
+        val cid = video.pages?.firstOrNull()?.cid ?: video.cid
+        return video.copy(cid = cid)
+    }
+
+    /** 通过 WBI 签名的 view API 获取包含字幕的完整视频信息 */
+    suspend fun getVideoInfoWithSubtitles(bvid: String): Pair<VideoInfo, List<String>> {
+        val mixinKey = wbiSign.getMixinKey(bvid)
+
+        val (dmImgStr, dmCoverStr) = randomDmStrs()
+        val params = mapOf(
+            "bvid" to bvid,
+            "dm_img_list" to "[]",
+            "dm_img_str" to dmImgStr,
+            "dm_cover_img_str" to dmCoverStr,
+            "dm_img_inter" to """{"ds":[],"wh":[0,0,0],"of":[0,0,0]}"""
+        )
+        val (wRid, wts) = wbiSign.signParams(params, mixinKey)
+
+        val resp = api.getWbiVideoInfo(
+            bvid = bvid, wRid = wRid, wts = wts,
+            dmImgList = "[]", dmImgStr = dmImgStr,
+            dmCoverImgStr = dmCoverStr,
+            dmImgInter = """{"ds":[],"wh":[0,0,0],"of":[0,0,0]}"""
+        )
+        if (resp.code != 0 || resp.data == null) {
+            throw Exception("获取视频详情失败: ${resp.message}")
+        }
+        val video = resp.data
+        val cid = video.pages?.firstOrNull()?.cid ?: video.cid
+        val fixedVideo = video.copy(cid = cid)
+
+        val subtitleUrls = video.subtitle?.list?.map { it.subtitleUrl } ?: emptyList()
+        return fixedVideo to subtitleUrls
+    }
+
+    /** 通过 /x/player/wbi/v2 获取字幕内容 */
+    suspend fun getSubtitles(bvid: String, cid: Long): List<SubtitleEntry> {
+        val errors = mutableListOf<String>()
+
+        // 方案A: WBI签名API
+        try {
+            val result = getSubtitlesViaWbi(bvid, cid)
+            if (result.isNotEmpty()) return result
+            errors.add("WBI: 返回空字幕列表")
+        } catch (e: NoSubtitleException) {
+            throw e
+        } catch (e: Exception) {
+            errors.add("WBI: ${e.message}")
+        }
+
+        // 方案B: /x/player/v2 非WBI
+        try {
+            val result = tryGetSubtitlesViaPlayerV2(bvid, cid)
+            if (result != null) {
+                if (result.isEmpty()) errors.add("PlayerV2: 空字幕列表")
+                else return result
+            } else {
+                errors.add("PlayerV2: 请求失败")
+            }
+        } catch (e: Exception) {
+            errors.add("PlayerV2: ${e.message}")
+        }
+
+        // 方案C: 视频页 HTML
+        val html = fetchVideoPage(bvid)
+        if (html != null) {
+            val subUrl = extractSubtitleUrl(html)
+            if (subUrl != null) return fetchSubtitleContent(subUrl)
+            errors.add("HTML: 未匹配到 subtitle_url")
+        } else {
+            errors.add("HTML: 页面获取失败")
+        }
+
+        throw Exception(errors.joinToString(" | ").ifEmpty { "该视频暂无字幕" })
+    }
+
+    private suspend fun getSubtitlesViaWbi(bvid: String, cid: Long): List<SubtitleEntry> {
+        val mixinKey = wbiSign.getMixinKey(bvid)
+
+        val (dmImgStr, dmCoverStr) = randomDmStrs()
+        val params = mapOf(
+            "bvid" to bvid,
+            "cid" to cid.toString(),
+            "isGaiaAvoided" to "false",
+            "web_location" to "1315873",
+            "dm_img_list" to "[]",
+            "dm_img_str" to dmImgStr,
+            "dm_cover_img_str" to dmCoverStr,
+            "dm_img_inter" to """{"ds":[],"wh":[0,0,0],"of":[0,0,0]}"""
+        )
+        val (wRid, wts) = wbiSign.signParams(params, mixinKey)
+
+        val resp = api.getSubtitleList(
+            bvid = bvid, cid = cid, wRid = wRid, wts = wts,
+            isGaiaAvoided = "false", webLocation = "1315873",
+            dmImgList = "[]", dmImgStr = dmImgStr,
+            dmCoverImgStr = dmCoverStr,
+            dmImgInter = """{"ds":[],"wh":[0,0,0],"of":[0,0,0]}"""
+        )
+        if (resp.code != 0) throw Exception("WBI API 返回 code=${resp.code}: ${resp.message}")
+        val subtitles = resp.data?.subtitle?.subtitles
+        if (subtitles.isNullOrEmpty()) return emptyList()
+        return fetchSubtitleContent(subtitles.first().subtitleUrl)
+    }
+
+    /** 下载并解析指定字幕 URL */
+    suspend fun downloadSubtitle(subtitleUrl: String): List<SubtitleEntry> =
+        fetchSubtitleContent(subtitleUrl)
+
+    /** 获取视频评论 */
+    suspend fun getComments(aid: Long, page: Int = 1, pageSize: Int = 20): List<Comment> {
+        val resp = api.getComments(type = 1, oid = aid, sort = 1, ps = pageSize, pn = page)
+        if (resp.code != 0) {
+            throw Exception("获取评论失败: ${resp.message}")
+        }
+        return resp.data?.replies ?: emptyList()
+    }
+
+    // 移除 tryGetSubtitlesViaWbi 旧方法，改为上面的 getSubtitlesViaWbi
+
+    private suspend fun tryGetSubtitlesViaPlayerV2(bvid: String, cid: Long): List<SubtitleEntry>? {
+        return try {
+            val resp = api.getPlayerData(bvid, cid)
+            if (resp.code != 0) return null
+            val subtitles = resp.data?.subtitle?.subtitles
+            if (subtitles.isNullOrEmpty()) return emptyList()
+            fetchSubtitleContent(subtitles.first().subtitleUrl)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private suspend fun fetchVideoPage(bvid: String): String? {
+        return try {
+            withContext(Dispatchers.IO) {
+                val request = Request.Builder()
+                    .url("https://www.bilibili.com/video/$bvid")
+                    .header("User-Agent", UA)
+                    .header("Accept", "text/html,application/xhtml+xml")
+                    .header("Accept-Language", "zh-CN,zh;q=0.9")
+                    .header("Referer", "https://www.bilibili.com/")
+                    .build()
+                okHttpClient.newCall(request).execute().body?.string()
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun extractSubtitleUrl(html: String): String? {
+        val regex = Regex(""""subtitle_url"\s*:\s*"([^"]+)"""")
+        return regex.find(html)?.groupValues?.get(1)
+    }
+
+    private suspend fun fetchSubtitleContent(url: String): List<SubtitleEntry> {
+        return withContext(Dispatchers.IO) {
+            val fullUrl = if (url.startsWith("//")) "https:$url" else url
+            val request = Request.Builder()
+                .url(fullUrl)
+                .header("Referer", "https://www.bilibili.com/")
+                .build()
+            val response = okHttpClient.newCall(request).execute()
+            val body = response.body?.string() ?: throw Exception("字幕内容为空")
+            val subtitleBody = gson.fromJson(body, SubtitleBody::class.java)
+            val entries = subtitleBody.body ?: emptyList()
+            entries.map { entry ->
+                SubtitleEntry(
+                    from = (entry.from * 1000).toLong().coerceAtLeast(0),
+                    to = (entry.to * 1000).toLong().coerceAtLeast(0),
+                    content = entry.content
+                )
+            }
+        }
+    }
+
+    companion object {
+        private const val UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
+
+        private fun randomDmStrs(): Pair<String, String> {
+            val r = "ABCDEFGHIJK"
+            return "${r.random()}${r.random()}" to "${r.random()}${r.random()}"
+        }
+    }
+}
+
+class NoSubtitleException : Exception("该视频暂无字幕")
