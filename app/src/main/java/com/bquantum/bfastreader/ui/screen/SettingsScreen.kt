@@ -1,5 +1,6 @@
 package com.bquantum.bfastreader.ui.screen
 
+import android.util.TypedValue
 import android.webkit.CookieManager
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -160,6 +161,8 @@ private fun LoginWebView(
                 settings.setSupportZoom(true)
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
+                // 底部留白，防止 B站 登录页协议文字遮挡按钮
+                setPadding(0, 0, 0, dpToPx(ctx, 40))
 
                 webViewClient = object : WebViewClient() {
                     override fun onPageFinished(view: WebView, url: String) {
@@ -170,7 +173,7 @@ private fun LoginWebView(
                             document.head.appendChild(s);
                         """.trimIndent(), null)
 
-                        if ((url.contains("bilibili.com") && !url.contains("passport") && !url.contains("login") && !url.contains("h5-app"))) {
+                        if ((url.contains("bilibili.com") && !url.contains("passport") && !url.contains("login"))) {
                             val cookieStr = CookieManager.getInstance().getCookie(url) ?: ""
                             if (cookieStr.contains("SESSDATA")) {
                                 val cred = parseCookies(cookieStr)
@@ -181,7 +184,7 @@ private fun LoginWebView(
                 }
 
                 CookieManager.getInstance().removeAllCookies(null)
-                loadUrl("https://passport.bilibili.com/h5-app/login")
+                loadUrl("https://passport.bilibili.com/login")
             }
         },
         modifier = modifier
@@ -201,4 +204,8 @@ private fun parseCookies(cookieStr: String): BiliCredential {
         buvid3 = map["buvid3"] ?: "",
         dedeuserId = map["DedeUserID"] ?: ""
     )
+}
+
+private fun dpToPx(ctx: android.content.Context, dp: Int): Int =
+    TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), ctx.resources.displayMetrics).toInt()
 }
