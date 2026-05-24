@@ -6,6 +6,7 @@ import com.bquantum.bfastreader.data.api.BiliApiService
 import com.bquantum.bfastreader.data.api.WbiSign
 import com.bquantum.bfastreader.data.local.CredentialStorage
 import com.bquantum.bfastreader.data.repository.VideoRepository
+import com.bquantum.bfastreader.domain.LinkParser
 import com.bquantum.bfastreader.ui.screen.HomeViewModel
 import com.bquantum.bfastreader.ui.screen.LoginViewModel
 import com.google.gson.Gson
@@ -46,6 +47,8 @@ val appModule = module {
 
     single { CredentialStorage(App.instance) }
 
+    single { LinkParser(get()) }
+
     single { WbiSign(get(), get()) }
 
     single {
@@ -65,5 +68,5 @@ val appModule = module {
     }
 
     viewModel { LoginViewModel(get(), get()) }
-    viewModel { HomeViewModel(get(), get()) }
+    viewModel { HomeViewModel(get(), get(), get()) }
 }

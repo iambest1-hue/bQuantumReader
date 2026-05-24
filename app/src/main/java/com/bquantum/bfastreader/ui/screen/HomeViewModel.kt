@@ -42,7 +42,8 @@ enum class Phase {
 
 class HomeViewModel(
     private val repository: VideoRepository,
-    private val credentialStorage: CredentialStorage
+    private val credentialStorage: CredentialStorage,
+    private val linkParser: LinkParser
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(HomeUiState())
@@ -62,15 +63,39 @@ class HomeViewModel(
     }
 
     fun parseLink(url: String = _state.value.inputUrl) {
-        val bvid = LinkParser.extractBvid(url)
+        var bvid = linkParser.extractBvid(url)
         if (bvid == null) {
             _state.update { it.copy(error = "未识别到有效的 BV 号或 av 号", phase = Phase.ERROR) }
             return
         }
 
-        viewModelScope.launch {
+        // 处理 b23.tv 短链接
+        if (bvid.startsWith("b23:") && linkParser.hasShortLink(url)) {
+            val shortUrl = bvid.removePrefix("b23:")
             _state.update { it.copy(phase = Phase.PARSING, error = null) }
-            try {
+            viewModelScope.launch {
+                try {
+                    val resolved = linkParser.resolveShortUrl(shortUrl)
+                    if (resolved != null) {
+                        parseResolvedBvid(resolved)
+                    } else {
+                        _state.update { it.copy(error = "无法解析短链接 $shortUrl", phase = Phase.ERROR) }
+                    }
+                } catch (e: Exception) {
+                    _state.update { it.copy(error = e.message ?: "解析短链接失败", phase = Phase.ERROR) }
+                }
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            parseResolvedBvid(bvid)
+        }
+    }
+
+    private suspend fun parseResolvedBvid(bvid: String) {
+        _state.update { it.copy(phase = Phase.PARSING, error = null) }
+        try {
                 val video = repository.getVideoInfo(bvid)
                 _state.update {
                     it.copy(
@@ -88,7 +113,6 @@ class HomeViewModel(
                 }
             }
         }
-    }
 
     fun extractSubtitles() {
         val video = _state.value.videoInfo ?: return
