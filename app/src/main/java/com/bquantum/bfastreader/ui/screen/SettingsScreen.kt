@@ -208,4 +208,3 @@ private fun parseCookies(cookieStr: String): BiliCredential {
 
 private fun dpToPx(ctx: android.content.Context, dp: Int): Int =
     TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp.toFloat(), ctx.resources.displayMetrics).toInt()
-}
