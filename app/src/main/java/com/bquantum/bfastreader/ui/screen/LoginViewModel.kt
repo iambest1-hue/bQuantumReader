@@ -25,6 +25,16 @@ class LoginViewModel(
     private val _state = MutableStateFlow(LoginUiState())
     val state: StateFlow<LoginUiState> = _state.asStateFlow()
 
+
+    init {
+        viewModelScope.launch {
+            credentialStorage.credential.collect { cred ->
+                if (cred.isLoggedIn && !_state.value.credential.isLoggedIn) {
+                    _state.update { it.copy(credential = cred) }
+                }
+            }
+        }
+    }
     fun onWebViewLoginSuccess(cred: BiliCredential) {
         viewModelScope.launch {
             try {
@@ -40,7 +50,8 @@ class LoginViewModel(
                     val nav = navResp.data
                     val fullCred = cred.copy(
                         userName = nav.userName ?: "",
-                        dedeuserId = nav.mid?.toString() ?: cred.dedeuserId
+                        dedeuserId = nav.mid?.toString() ?: cred.dedeuserId,
+                        avatarUrl = nav.face ?: ""
                     )
                     credentialStorage.save(fullCred)
                     _state.update { it.copy(statusText = "", credential = fullCred) }

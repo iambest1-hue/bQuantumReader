@@ -16,7 +16,8 @@ data class BiliCredential(
     val biliJct: String = "",
     val buvid3: String = "",
     val dedeuserId: String = "",
-    val userName: String = ""
+    val userName: String = "",
+    val avatarUrl: String = ""
 ) {
     val isLoggedIn: Boolean get() = sessdata.isNotBlank()
     val csrf: String get() = biliJct
@@ -30,7 +31,8 @@ class CredentialStorage(private val app: Application) {
             biliJct = prefs[KEY_BILI_JCT] ?: "",
             buvid3 = prefs[KEY_BUVID3] ?: "",
             dedeuserId = prefs[KEY_DEDEUSERID] ?: "",
-            userName = prefs[KEY_USERNAME] ?: ""
+            userName = prefs[KEY_USERNAME] ?: "",
+            avatarUrl = prefs[KEY_AVATAR] ?: ""
         )
     }
 
@@ -41,6 +43,7 @@ class CredentialStorage(private val app: Application) {
             prefs[KEY_BUVID3] = credential.buvid3
             prefs[KEY_DEDEUSERID] = credential.dedeuserId
             prefs[KEY_USERNAME] = credential.userName
+            prefs[KEY_AVATAR] = credential.avatarUrl
         }
     }
 
@@ -54,5 +57,6 @@ class CredentialStorage(private val app: Application) {
         private val KEY_BUVID3 = stringPreferencesKey("buvid3")
         private val KEY_DEDEUSERID = stringPreferencesKey("dedeuserid")
         private val KEY_USERNAME = stringPreferencesKey("username")
+        private val KEY_AVATAR = stringPreferencesKey("avatar")
     }
 }

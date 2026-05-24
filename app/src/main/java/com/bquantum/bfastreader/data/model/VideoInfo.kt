@@ -54,6 +54,7 @@ data class NavData(
     @SerializedName("uname")
     val userName: String?,
     val mid: Long?,
+    val face: String?,
     @SerializedName("wbi_img")
     val wbiImg: WbiImg?
 )
