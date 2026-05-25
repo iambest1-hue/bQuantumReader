@@ -10,6 +10,7 @@ import com.bquantum.bfastreader.data.local.CredentialStorage
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -31,10 +32,14 @@ class LoginViewModel(
     init {
         viewModelScope.launch {
             credentialStorage.credential.collect { cred ->
-                if (cred.isLoggedIn && !_state.value.credential.isLoggedIn) {
-                    _state.update { it.copy(credential = cred) }
-                }
+                _state.update { it.copy(credential = cred) }
             }
+        }
+    }
+
+    fun refreshCredential() {
+        viewModelScope.launch {
+            _state.update { it.copy(credential = credentialStorage.credential.first()) }
         }
     }
     fun onWebViewLoginSuccess(cred: BiliCredential) {
