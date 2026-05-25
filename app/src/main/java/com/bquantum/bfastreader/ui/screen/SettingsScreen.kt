@@ -160,10 +160,7 @@ fun SettingsScreen(
                             Text("登出")
                         }
                         Button(
-                            onClick = {
-                                viewModel.prepareSwitchAccount()
-                                showWebView = true
-                            },
+                            onClick = { showWebView = true },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("切换账号")
