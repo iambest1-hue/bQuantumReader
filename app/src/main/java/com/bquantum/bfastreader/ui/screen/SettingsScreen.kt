@@ -147,24 +147,11 @@ fun SettingsScreen(
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    OutlinedButton(
+                        onClick = { viewModel.logout() },
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedButton(
-                            onClick = {
-                                viewModel.logout()
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("登出")
-                        }
-                        Button(
-                            onClick = { showWebView = true },
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text("切换账号")
-                        }
+                        Text("登出")
                     }
                 }
             } else {
