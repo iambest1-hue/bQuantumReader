@@ -219,16 +219,17 @@ private fun LoginWebView(
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 // 底部留白，防止 B站 登录页协议文字遮挡按钮
-                setPadding(0, 0, 0, dpToPx(ctx, 40))
+                setPadding(0, 0, 0, dpToPx(ctx, 120))
 
                 webViewClient = object : WebViewClient() {
+                    override fun onPageCommitVisible(view: WebView, url: String) {
+                        // 尽早注入 CSS，防止协议文字遮挡
+                        view.loadUrl("javascript:(function(){var s=document.createElement('style');s.textContent='body{padding-bottom:120px!important}';document.head.appendChild(s);})()")
+                    }
+
                     override fun onPageFinished(view: WebView, url: String) {
-                        // 注入 CSS 给页面底部增加足够空间，防止协议文字遮挡
-                        view.evaluateJavascript("""
-                            var s = document.createElement('style');
-                            s.textContent = 'body { padding-bottom: 100px !important; }';
-                            document.head.appendChild(s);
-                        """.trimIndent(), null)
+                        // 再次确保 CSS 生效
+                        view.loadUrl("javascript:(function(){var s=document.createElement('style');s.textContent='body{padding-bottom:120px!important}';document.head.appendChild(s);})()")
 
                         if ((url.contains("bilibili.com") && !url.contains("passport") && !url.contains("login"))) {
                             val cookieStr = CookieManager.getInstance().getCookie(url) ?: ""
