@@ -64,15 +64,24 @@ class VideoRepository(
     suspend fun getSubtitles(bvid: String, cid: Long): List<SubtitleEntry> {
         val errors = mutableListOf<String>()
 
-        // 方案A: WBI签名API
-        try {
-            val result = getSubtitlesViaWbi(bvid, cid)
-            if (result.isNotEmpty()) return result
-            errors.add("WBI: 返回空字幕列表")
-        } catch (e: NoSubtitleException) {
-            throw e
-        } catch (e: Exception) {
-            errors.add("WBI: ${e.message}")
+        // 方案A: WBI签名API (含重试)
+        for (attempt in 1..2) {
+            try {
+                val result = getSubtitlesViaWbi(bvid, cid)
+                if (result.isNotEmpty()) return result
+                if (attempt == 1) {
+                    // 返回空列表可能是WBI密钥过期，清缓存重试
+                    wbiSign.clearCache()
+                    errors.add("WBI-$attempt: 空列表,重试")
+                    continue
+                }
+                errors.add("WBI-$attempt: 返回空字幕列表")
+            } catch (e: NoSubtitleException) {
+                throw e
+            } catch (e: Exception) {
+                errors.add("WBI-$attempt: ${e.message}")
+                if (attempt == 1) wbiSign.clearCache()
+            }
         }
 
         // 方案B: /x/player/v2 非WBI
