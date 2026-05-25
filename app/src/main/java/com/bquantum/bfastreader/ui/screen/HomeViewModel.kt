@@ -13,6 +13,7 @@ import com.bquantum.bfastreader.domain.MarkdownGen
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +57,12 @@ class HomeViewModel(
             credentialStorage.credential.collect { cred ->
                 _state.update { it.copy(credential = cred) }
             }
+        }
+    }
+
+    fun refreshCredential() {
+        viewModelScope.launch {
+            _state.update { it.copy(credential = credentialStorage.credential.first()) }
         }
     }
 
