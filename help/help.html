@@ -22,102 +22,138 @@
       </ul>
     </section>
 
-    <!-- Whisper 语音识别 -->
+    <!-- Whisper 语音识别 - 新流程 -->
     <section class="section-highlight">
       <h2>🎤 安装 Whisper 语音识别服务</h2>
-      <p>语音识别功能需要在本地运行 Whisper 服务。首次配置后，后续使用只需启动服务即可。</p>
+      <p>语音识别功能需要在本地运行 Whisper 服务。有两种方式：<strong>一键安装（推荐）</strong>和<strong>手动安装</strong>。</p>
 
-      <h3>步骤 1：检查 Python 环境</h3>
-      <p>需要 <strong>Python 3.8 或更高版本</strong>。打开终端（CMD/PowerShell）验证：</p>
-      <div class="code-block">python --version</div>
-      <p>如果未安装，请从 <a href="https://www.python.org/downloads/" target="_blank">python.org</a> 下载安装。<br>
-      安装时请勾选 <strong>"Add Python to PATH"</strong>。</p>
+      <h3>✅ 方式一：一键安装（推荐）</h3>
+      <ol>
+        <li>打开扩展窗口，点击「🔧 安装向导」按钮（Whisper 未连接时显示）</li>
+        <li>安装向导自动填入扩展 ID，点击「📋 复制安装命令」</li>
+        <li>打开文件管理器，进入 <code>whisper_server</code> 目录</li>
+        <li>在目录地址栏输入 <code>cmd</code> 回车，粘贴上一步复制的命令并回车</li>
+        <li>安装脚本自动完成：创建虚拟环境 → 安装依赖(清华镜像) → 预下载模型(HF镜像) → 检测 ffmpeg → 注册本地服务</li>
+        <li>安装完成后点「🔄 检查安装状态」，确认全部 ✅</li>
+        <li><strong>重启 Chrome 浏览器</strong></li>
+      </ol>
 
-      <h3>步骤 2：安装依赖包</h3>
-      <p>在终端中进入扩展目录下的 <code>whisper_server</code> 文件夹：</p>
-      <div class="code-block">cd 扩展目录/whisper_server
-pip install -r requirements.txt</div>
+      <h4>🚀 一键启动</h4>
+      <ol>
+        <li>打开扩展窗口，点击「🚀 一键启动」</li>
+        <li>首次启动自动下载模型（约 500MB），扩展窗口显示下载进度</li>
+        <li>看到绿色圆点 <strong>● Whisper: 已连接</strong>，即可使用语音识别</li>
+      </ol>
+
       <div class="tip">
-        💡 如果安装速度慢，可使用国内镜像源：
-        <div class="code-block">pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</div>
+        💡 你也可以直接双击 <code>whisper_server/start_server.bat</code> 启动服务（无需安装向导）。
       </div>
-
-      <h3>步骤 3：配置模型（可选）</h3>
-      <p>可通过环境变量指定模型参数：</p>
-      <table>
-        <tr><th>变量</th><th>说明</th><th>默认值</th><th>推荐值</th></tr>
-        <tr>
-          <td><code>WHISPER_MODEL</code></td>
-          <td>模型大小（越大越准越慢）</td>
-          <td><code>small</code></td>
-          <td>有 GPU: <code>large-v3</code>；无 GPU: <code>base</code></td>
-        </tr>
-        <tr>
-          <td><code>WHISPER_DEVICE</code></td>
-          <td>计算设备</td>
-          <td><code>cpu</code></td>
-          <td>有 NVIDIA GPU: <code>cuda</code></td>
-        </tr>
-        <tr>
-          <td><code>WHISPER_COMPUTE_TYPE</code></td>
-          <td>计算精度</td>
-          <td><code>int8</code></td>
-          <td>GPU 推荐: <code>float16</code></td>
-        </tr>
-        <tr>
-          <td><code>WHISPER_PORT</code></td>
-          <td>服务端口</td>
-          <td><code>8787</code></td>
-          <td>一般不需要修改</td>
-        </tr>
-      </table>
-      <p>配置示例（Windows PowerShell）：</p>
-      <div class="code-block">$env:WHISPER_MODEL="base"
-$env:WHISPER_DEVICE="cpu"
-python server.py</div>
-      <p><strong>模型下载说明</strong>：faster-whisper 会在首次运行时自动下载模型文件（small 约 500MB，base 约 150MB）。下载速度取决于网络，也可以设置镜像加速：</p>
-      <div class="code-block">$env:HF_ENDPOINT="https://hf-mirror.com"
-python server.py</div>
-
-      <h3>步骤 4：启动服务</h3>
-      <div class="code-block">python server.py</div>
-      <p>首次启动时会自动下载模型，请耐心等待。看到以下输出即表示启动成功：</p>
-      <div class="code-block">B站学神 Whisper Server starting on port 8787...
-Pre-loading model... (this may take a while on first run)
-Model loaded successfully
- * Running on http://0.0.0.0:8787</div>
-
-      <h3>步骤 5：测试连接</h3>
-      <p>服务启动后，在浏览器中访问：</p>
-      <div class="code-block">http://localhost:8787/status</div>
-      <p>返回类似 <code>{"ready":true,"model":"small","device":"cpu"}</code> 即表示服务正常运行。</p>
-      <p>然后在扩展 <strong>设置页面</strong> 中确认 Whisper 服务地址为 <code>http://localhost:8787</code>，点击"测试连接"。</p>
     </section>
 
-    <!-- 常见问题 -->
+    <!-- 高级/手动 -->
     <section>
-      <h2>❓ 常见问题</h2>
+      <h2>⚙️ 高级：手动安装</h2>
+      <details>
+        <summary>点击展开手动安装步骤</summary>
+
+        <h3>步骤 1：检查 Python 环境</h3>
+        <p>需要 <strong>Python 3.8 或更高版本</strong>。打开终端（CMD/PowerShell）验证：</p>
+        <div class="code-block">python --version</div>
+        <p>如果未安装，请从 <a href="https://www.python.org/downloads/" target="_blank">python.org</a> 下载安装。<br>
+        安装时请勾选 <strong>"Add Python to PATH"</strong>。</p>
+
+        <h3>步骤 2：创建虚拟环境并安装依赖</h3>
+        <div class="code-block">cd whisper_server
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple</div>
+
+        <h3>步骤 3：配置模型（可选）</h3>
+        <p>可通过环境变量指定模型参数：</p>
+        <table>
+          <tr><th>变量</th><th>说明</th><th>默认值</th><th>推荐值</th></tr>
+          <tr>
+            <td><code>WHISPER_MODEL</code></td>
+            <td>模型大小（越大越准越慢）</td>
+            <td><code>small</code></td>
+            <td>有 GPU: <code>large-v3</code>；无 GPU: <code>base</code></td>
+          </tr>
+          <tr>
+            <td><code>WHISPER_DEVICE</code></td>
+            <td>计算设备</td>
+            <td><code>cpu</code></td>
+            <td>有 NVIDIA GPU: <code>cuda</code></td>
+          </tr>
+          <tr>
+            <td><code>WHISPER_COMPUTE_TYPE</code></td>
+            <td>计算精度</td>
+            <td><code>int8</code></td>
+            <td>GPU 推荐: <code>float16</code></td>
+          </tr>
+          <tr>
+            <td><code>WHISPER_PORT</code></td>
+            <td>服务端口</td>
+            <td><code>8787</code></td>
+            <td>一般不需要修改（新版可自动找空闲端口）</td>
+          </tr>
+        </table>
+        <p>配置示例（Windows PowerShell）：</p>
+        <div class="code-block">$env:WHISPER_MODEL="base"
+$env:WHISPER_DEVICE="cpu"
+.venv\Scripts\python server.py</div>
+
+        <h3>步骤 4：预下载模型（可选但推荐）</h3>
+        <div class="code-block">set HF_ENDPOINT=https://hf-mirror.com
+.venv\Scripts\python -c "from faster_whisper import WhisperModel; WhisperModel('small', device='cpu', compute_type='int8')"</div>
+
+        <h3>步骤 5：启动服务</h3>
+        <div class="code-block">.venv\Scripts\python server.py</div>
+        <p>看到以下输出即表示启动成功：</p>
+        <div class="code-block">[INFO] Model loaded successfully
+ * Running on http://0.0.0.0:8787</div>
+      </details>
+    </section>
+
+    <!-- 查看日志 -->
+    <section>
+      <h2>📄 查看日志</h2>
+      <p>所有日志文件位于 <code>whisper_server/logs/</code>：</p>
       <ul>
+        <li><code>server.log</code> — 服务主日志（轮转，保留最近 3 份）</li>
+        <li><code>server_stdout.log</code> / <code>server_stderr.log</code> — 启动脚本输出</li>
+        <li><code>native_host.log</code> — 原生消息主机日志（一键启动的诊断信息）</li>
+      </ul>
+    </section>
+
+    <!-- 故障排查 -->
+    <section>
+      <h2>🔧 故障排查</h2>
+      <ul>
+        <li><strong>一键启动按钮没反应？</strong><br>
+        先运行安装向导，确认 5 项全部 ✅。如仍然失败，运行 <code>install.bat -Repair</code> 修复安装。</li>
         <li><strong>模型下载非常慢怎么办？</strong><br>
-        设置环境变量 <code>HF_ENDPOINT=https://hf-mirror.com</code> 使用 HuggingFace 国内镜像加速下载。</li>
-        <li><strong>端口被占用如何解决？</strong><br>
-        修改端口：<code>$env:WHISPER_PORT="8788"</code>，然后在扩展设置中同步修改服务地址。</li>
+        新版服务已自动设置 HF 国内镜像（<code>https://hf-mirror.com</code>），无需手动配置。如仍慢，检查网络环境。</li>
+        <li><strong>端口被占用？</strong><br>
+        新版服务可自动寻找空闲端口（8788、8789...），扩展也会自动同步，无需手动处理。</li>
         <li><strong>电脑没有 GPU / 内存不足？</strong><br>
         使用 <code>tiny</code> 或 <code>base</code> 模型，资源占用更低，速度快。</li>
         <li><strong>CPU 模式下识别速度慢？</strong><br>
         这是正常的。small 模型处理 10 分钟音频约需 3-5 分钟。建议使用 <code>base</code> 模型提升速度。</li>
-        <li><strong>Windows 路径包含空格？</strong><br>
-        请用引号包裹路径，例如 <code>cd "D:\my extensions\b站学神\whisper_server"</code>。</li>
-        <li><strong>如何自动下载模型而不启动服务？</strong><br>
-        运行以下 Python 代码即可预下载：<code>python -c "from faster_whisper import WhisperModel; WhisperModel('small')"</code></li>
+        <li><strong>语音识别中断 / 崩溃？</strong><br>
+        新版服务有自动重启功能，如崩溃会尝试自动恢复。查看 <code>logs/server.log</code> 获取诊断信息。</li>
+        <li><strong>需要一直保持扩展窗口打开吗？</strong><br>
+        不需要。新版支持后台运行（offscreen 模式），关闭窗口后转录仍会继续。重新打开扩展可查看结果。</li>
       </ul>
     </section>
 
     <!-- 使用提示 -->
     <section class="tip warning">
-      <h2>⚠️ 重要提醒</h2>
-      <p>在 <strong>提取字幕</strong> 或 <strong>语音识别</strong> 过程中，请务必保持扩展窗口打开，不要关闭！</p>
-      <p>如果窗口关闭，正在进行的操作将中断。语音识别完成后，结果会自动显示在窗口中。</p>
+      <h2>💡 使用提示</h2>
+      <ul>
+        <li>语音识别前请确保网络畅通（服务需要下载 B站 音频流）</li>
+        <li>长视频（超过 30 分钟）的转写可能需要一些时间，进度条显示真实进度</li>
+        <li>取消按钮可随时中断正在进行的转写</li>
+        <li>转写完成后会有系统通知</li>
+      </ul>
     </section>
   </div>
 </body>

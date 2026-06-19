@@ -1,4 +1,7 @@
 .claude/
+whisper_server/logs/
+whisper_server/runtime.json
+whisper_server/install_state.json
 server.log
 __pycache__/
 *.pyc

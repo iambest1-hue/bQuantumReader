@@ -3,6 +3,7 @@
 import { getVideoInfo, getSubtitleList, getSubtitleContent, getAudioUrl, getComments, formatDuration } from '../shared/bilibili-api.js';
 import { generateMarkdown, sanitizeFilename } from '../shared/markdown.js';
 import { checkWhisperStatus } from '../shared/asr.js';
+import { getNativeClient, resetNativeClient } from '../shared/native_messaging.js';
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'EXTRACT_SUBTITLE') {
@@ -79,6 +80,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(err => sendResponse({ error: err.message, nativeStarted: false }));
     return true;
   }
+
+  if (request.type === 'NATIVE_COMMAND') {
+    handleNativeCommand(request.command)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
 });
 
 async function handleExtract(bvid, cid) {
@@ -151,31 +159,39 @@ async function handleDownload(markdown, filename) {
 }
 
 async function handleStartASR({ audioUrl, serverUrl, language, videoInfo, comments }) {
-  // Store full task state in storage FIRST, before creating offscreen doc
-  // Offscreen doc will read this automatically on load, avoiding race conditions
-  await chrome.storage.local.set({
-    asr_task: {
-      status: 'starting',
-      progress: 0,
-      startTime: Date.now(),
-      bvid: videoInfo.bvid,
-      videoInfo,
-      comments: comments || [],
-      audioUrl,
-      serverUrl,
-      language: language || 'zh'
-    }
-  });
+  // Store full task state in storage FIRST
+  const task = {
+    status: 'starting',
+    progress: 0,
+    startTime: Date.now(),
+    bvid: videoInfo.bvid,
+    videoInfo,
+    comments: comments || [],
+    audioUrl,
+    serverUrl,
+    language: language || 'zh'
+  };
+  await chrome.storage.local.set({ asr_task: task });
 
-  // Close any existing offscreen doc first (stale/hung task), then create a fresh one
-  try {
-    await chrome.offscreen.closeDocument();
-  } catch (e) { /* none exists */ }
+  // Check if offscreen already exists (avoid close+create race)
+  const existing = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT']
+  }).catch(() => []);
 
-  await chrome.offscreen.createDocument({
-    url: 'offscreen/offscreen.html',
-    reasons: ['WORKERS'],
-    justification: 'Long-running Whisper ASR transcription that must persist when popup closes'
+  if (existing.length === 0) {
+    await chrome.offscreen.createDocument({
+      url: 'offscreen/offscreen.html',
+      reasons: ['DOM_SCRAPING'],
+      justification: 'Long-running Whisper ASR transcription that persists when popup closes'
+    });
+    // Give the document a moment to initialize before sending message
+    await new Promise(r => setTimeout(r, 500));
+  }
+
+  // Actively notify offscreen (primary start mechanism)
+  chrome.runtime.sendMessage({ type: 'START_TRANSCRIBE_IN_OFFSCREEN', task }).catch(() => {
+    // Offscreen might not have loaded its listener yet — storage-driven
+    // fallback (offscreen.js IIFE) will pick up the task
   });
 }
 
@@ -189,35 +205,55 @@ async function handleTranscribeDone() {
 }
 
 async function handleStartWhisperService() {
-  // 尝试通过 Native Messaging 启动 Whisper 服务
+  // 通过 Native Messaging 长连接启动 Whisper 服务
   try {
-    const nativePort = chrome.runtime.connectNative('com.bquantum.whisper');
-    return await new Promise((resolve, reject) => {
-      nativePort.onMessage.addListener((msg) => {
-        nativePort.disconnect();
-        if (msg.status === 'ok') {
-          resolve({ nativeStarted: true, pid: msg.pid, msg: msg.msg });
-        } else {
-          reject(new Error(msg.msg || 'Native host 返回错误'));
-        }
-      });
-      nativePort.onDisconnect.addListener(() => {
-        reject(new Error('Native host 未安装或连接断开'));
-      });
-      nativePort.postMessage({ command: 'start' });
-    });
+    const client = getNativeClient();
+    await client.connect();
+    const resp = await client.send({ command: 'start' }, 10000);
+    return { nativeStarted: true, pid: resp.pid, msg: resp.msg };
   } catch (err) {
-    // Native host 未安装，返回失败让 popup 走剪贴板方案
     return { nativeStarted: false, error: err.message };
   }
 }
 
 async function handleCancelASR() {
-  await chrome.storage.local.remove('asr_task');
+  // 获取当前任务信息用于服务端取消
+  try {
+    const { asr_task } = await chrome.storage.local.get('asr_task');
+    const taskId = asr_task?.task_id;
+    const serverUrl = asr_task?.serverUrl || 'http://127.0.0.1:8787';
+
+    // 通知服务端取消
+    if (taskId) {
+      fetch(`${serverUrl}/cancel/${taskId}`, { method: 'POST' }).catch(() => {});
+    }
+
+    // 通知 offscreen 文档取消（让它 abort fetch + 写 cancelled 状态）
+    // offscreen 收到 CANCEL_ASR 后会自行清理并发送 TRANSCRIBE_DONE
+    chrome.runtime.sendMessage({ type: 'CANCEL_ASR' }).catch(() => {});
+
+    // 移除存储中的任务（防止恢复）
+    await chrome.storage.local.remove('asr_task');
+  } catch (e) {
+    // 兜底
+    await chrome.storage.local.remove('asr_task');
+  }
+
+  // 关闭 offscreen document
   try {
     await chrome.offscreen.closeDocument();
   } catch (e) {
-    // ignore
+    // 可能已关闭
+  }
+}
+
+async function handleNativeCommand(command) {
+  try {
+    const client = getNativeClient();
+    await client.connect();
+    return await client.send({ command }, 5000);
+  } catch (err) {
+    return { status: 'error', msg: err.message };
   }
 }
 
@@ -256,18 +292,10 @@ chrome.action.onClicked.addListener(async (tab) => {
   await chrome.storage.session.set({ ext_window_id: win.id });
 });
 
-// 窗口关闭时清理存储
+// 窗口关闭时清理 session（但保留 offscreen / asr_task，让后台转录继续运行）
 chrome.windows.onRemoved.addListener(async (windowId) => {
   const { ext_window_id } = await chrome.storage.session.get('ext_window_id');
   if (windowId === ext_window_id) {
-    // 如果 ASR 正在运行，清理 offscreen document
-    try {
-      const { asr_task } = await chrome.storage.local.get('asr_task');
-      if (asr_task && (asr_task.status === 'starting' || asr_task.status === 'connecting' || asr_task.status === 'processing')) {
-        await chrome.offscreen.closeDocument();
-        await chrome.storage.local.remove('asr_task');
-      }
-    } catch (_) { /* 忽略清理错误 */ }
     await chrome.storage.session.remove(['ext_window_id', 'activeTabId']);
   }
 });

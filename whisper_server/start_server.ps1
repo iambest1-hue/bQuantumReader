@@ -4,7 +4,8 @@ param(
     [string]$Model = $env:WHISPER_MODEL,
     [string]$Device = $env:WHISPER_DEVICE,
     [string]$ComputeType = $env:WHISPER_COMPUTE_TYPE,
-    [int]$Port = 8787
+    [int]$Port = 8787,
+    [switch]$Repair
 )
 
 $scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
@@ -22,30 +23,37 @@ Write-Host ""
 Write-Host "[1/4] 查找 Python 环境 / Finding Python..." -ForegroundColor Cyan
 $pyCmd = $null
 
-# 候选列表：python3, python, py（launcher）, 以及已安装目录
-$candidates = @()
-foreach ($cmd in @("python3", "python", "py")) {
-    $r = Get-Command $cmd -ErrorAction SilentlyContinue
-    if ($r) { $candidates += $cmd }
-}
-foreach ($pattern in @("$env:LocalAppData\Programs\Python\Python3*", "$env:ProgramFiles\Python3*")) {
-    $dirs = Get-Item $pattern -ErrorAction SilentlyContinue | Sort-Object Name -Descending
-    foreach ($dir in $dirs) {
-        $exe = Join-Path $dir.FullName "python.exe"
-        if (Test-Path $exe) { $candidates += $exe }
+# 优先使用 .venv（如果存在）
+$venvPython = Join-Path $scriptDir ".venv\Scripts\python.exe"
+if (Test-Path $venvPython) {
+    Write-Host "        发现 .venv 环境，优先使用" -ForegroundColor DarkGray
+    $pyCmd = $venvPython
+} else {
+    # 候选列表：python3, python, py（launcher）, 以及已安装目录
+    $candidates = @()
+    foreach ($cmd in @("python3", "python", "py")) {
+        $r = Get-Command $cmd -ErrorAction SilentlyContinue
+        if ($r) { $candidates += $cmd }
     }
-}
+    foreach ($pattern in @("$env:LocalAppData\Programs\Python\Python3*", "$env:ProgramFiles\Python3*")) {
+        $dirs = Get-Item $pattern -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        foreach ($dir in $dirs) {
+            $exe = Join-Path $dir.FullName "python.exe"
+            if (Test-Path $exe) { $candidates += $exe }
+        }
+    }
 
-# 逐个验证：版本号 + pip 同时可用
-foreach ($c in $candidates) {
-    $ver = & $c --version 2>&1
-    if ($LASTEXITCODE -ne 0) { continue }
-    $pipVer = & $c -m pip --version 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $pyCmd = $c
-        break
+    # 逐个验证：版本号 + pip 同时可用
+    foreach ($c in $candidates) {
+        $ver = & $c --version 2>&1
+        if ($LASTEXITCODE -ne 0) { continue }
+        $pipVer = & $c -m pip --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+            $pyCmd = $c
+            break
+        }
+        Write-Host "       $c 已找到但无 pip（可能是 Store 版本），跳过..." -ForegroundColor DarkGray
     }
-    Write-Host "       $c 已找到但无 pip（可能是 Store 版本），跳过..." -ForegroundColor DarkGray
 }
 
 if (-not $pyCmd) {
@@ -67,42 +75,71 @@ Write-Host ""
 Write-Host "[2/4] 检查依赖包 / Checking dependencies..." -ForegroundColor Cyan
 $missing = $false
 
-$flaskCheck = & $pyCmd -c "import flask; print(flask.__version__)" 2>&1
-if ($LASTEXITCODE -ne 0) {
-    $missing = $true
+# 如果用了 .venv，跳过依赖检查（venv 保证已安装）
+if ($pyCmd -eq $venvPython) {
+    Write-Host "       .venv 环境，跳过依赖检查" -ForegroundColor DarkGray
 } else {
-    Write-Host "       flask: $flaskCheck" -ForegroundColor DarkGray
-}
-
-$fwCheck = & $pyCmd -c "import faster_whisper; print('OK')" 2>&1
-if ($LASTEXITCODE -ne 0) {
-    $missing = $true
-} else {
-    Write-Host "       faster-whisper: OK" -ForegroundColor DarkGray
-}
-
-if ($missing) {
-    Write-Host "[INFO] 正在安装依赖包 / Installing dependencies..." -ForegroundColor Yellow
-    Write-Host "       目录: $(Get-Location)" -ForegroundColor DarkGray
-    & $pyCmd -m pip install -r requirements.txt
+    $flaskCheck = & $pyCmd -c "import flask; print(flask.__version__)" 2>&1
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "[FAIL] 安装失败 / Install failed" -ForegroundColor Red
-        Write-Host "手动执行: cd whisper_server && $pyCmd -m pip install -r requirements.txt" -ForegroundColor Yellow
-        Read-Host "Press Enter to exit"
-        exit 1
+        $missing = $true
+    } else {
+        Write-Host "       flask: $flaskCheck" -ForegroundColor DarkGray
     }
-    Write-Host "[ OK ] 依赖安装完成 / Dependencies installed" -ForegroundColor Green
-} else {
-    Write-Host "[ OK ] 依赖已就绪 / Dependencies ready" -ForegroundColor Green
+
+    $fwCheck = & $pyCmd -c "import faster_whisper; print('OK')" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        $missing = $true
+    } else {
+        Write-Host "       faster-whisper: OK" -ForegroundColor DarkGray
+    }
+
+    if ($missing) {
+        Write-Host "[INFO] 正在安装依赖包 / Installing dependencies..." -ForegroundColor Yellow
+        & $pyCmd -m pip install -r requirements.txt -i https://pypi.tuna.tsinghua.edu.cn/simple
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[FAIL] 安装失败 / Install failed" -ForegroundColor Red
+            Write-Host "手动执行: cd whisper_server && pip install -r requirements.txt" -ForegroundColor Yellow
+            Read-Host "Press Enter to exit"
+            exit 1
+        }
+        Write-Host "[ OK ] 依赖安装完成 / Dependencies installed" -ForegroundColor Green
+    } else {
+        Write-Host "[ OK ] 依赖已就绪 / Dependencies ready" -ForegroundColor Green
+    }
 }
 Write-Host ""
 
 # ====== 加载配置 / Config ======
 Write-Host "[3/4] 加载配置 / Loading config..." -ForegroundColor Cyan
-if ($Model) { $env:WHISPER_MODEL = $Model } else { $env:WHISPER_MODEL = "small" }
-if ($Device) { $env:WHISPER_DEVICE = $Device } else { $env:WHISPER_DEVICE = "cpu" }
-if ($ComputeType) { $env:WHISPER_COMPUTE_TYPE = $ComputeType } else { $env:WHISPER_COMPUTE_TYPE = "int8" }
-$env:WHISPER_PORT = $Port.ToString()
+
+# 模型 / 设备 / 精度
+if ($Model) { $env:WHISPER_MODEL = $Model } elseif (-not $env:WHISPER_MODEL) { $env:WHISPER_MODEL = "small" }
+if ($Device) { $env:WHISPER_DEVICE = $Device } elseif (-not $env:WHISPER_DEVICE) { $env:WHISPER_DEVICE = "cpu" }
+if ($ComputeType) { $env:WHISPER_COMPUTE_TYPE = $ComputeType } elseif (-not $env:WHISPER_COMPUTE_TYPE) { $env:WHISPER_COMPUTE_TYPE = "int8" }
+
+# HF_ENDPOINT 国内镜像（如未手动设置）
+if (-not $env:HF_ENDPOINT) {
+    $env:HF_ENDPOINT = "https://hf-mirror.com"
+    Write-Host "       HF镜像: $env:HF_ENDPOINT (自动设置)" -ForegroundColor Gray
+}
+
+# 读取 runtime.json（如果端口被 server 自动改写过）
+$runtimePath = Join-Path $scriptDir "runtime.json"
+if (Test-Path $runtimePath) {
+    try {
+        $runtime = Get-Content $runtimePath -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($runtime.port -and $runtime.port -ne $Port) {
+            Write-Host "       runtime 端口: $($runtime.port) (端口动态调整)" -ForegroundColor Yellow
+            $env:WHISPER_PORT = $runtime.port.ToString()
+        } else {
+            $env:WHISPER_PORT = $Port.ToString()
+        }
+    } catch {
+        $env:WHISPER_PORT = $Port.ToString()
+    }
+} else {
+    $env:WHISPER_PORT = $Port.ToString()
+}
 
 Write-Host "       模型/Model : $env:WHISPER_MODEL" -ForegroundColor Gray
 Write-Host "       设备/Device: $env:WHISPER_DEVICE" -ForegroundColor Gray

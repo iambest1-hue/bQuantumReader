@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let currentResult = null;
 let whisperServerUrl = '';
 let currentBvid = null;
+let _asrCancelFlag = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
   // Window mode: 从 storage.session 获取创建窗口时存储的标签 ID
@@ -76,7 +77,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function loadWhisperStatus() {
   chrome.storage.sync.get(['whisperServerUrl'], async (settings) => {
-    whisperServerUrl = settings.whisperServerUrl || 'http://localhost:8787';
+    whisperServerUrl = settings.whisperServerUrl || 'http://127.0.0.1:8787';
 
     const statusEl = $('whisperStatus');
     const dotEl = statusEl.querySelector('.whisper-dot');
@@ -92,19 +93,44 @@ function loadWhisperStatus() {
     });
 
     if (resp.available) {
-      dotEl.className = 'whisper-dot online';
-      textEl.textContent = `Whisper: 已连接 (${resp.model || 'unknown'})`;
+      const { phase, progress, error_class, error_message, model, device, compute_type } = resp;
+
+      // 根据 phase 显示不同状态
+      if (phase === 'ready') {
+        dotEl.className = 'whisper-dot online';
+        textEl.textContent = `Whisper: 已连接 (${model || 'unknown'})`;
+        $('asrBtn').hidden = false;
+        $('asrBtn').disabled = false;
+        $('startServiceBtn').hidden = true;
+      } else if (phase === 'downloading_model' || phase === 'loading_model') {
+        dotEl.className = 'whisper-dot loading';
+        textEl.textContent = `Whisper: ${phase === 'downloading_model' ? '模型下载中' : '模型加载中'} ${progress || 0}%`;
+        $('asrBtn').hidden = false;
+        $('asrBtn').disabled = true;
+        $('startServiceBtn').hidden = true;
+      } else if (phase === 'failed') {
+        dotEl.className = 'whisper-dot offline';
+        textEl.textContent = `Whisper: ${error_message || '错误'}`;
+        $('asrBtn').hidden = false;
+        $('asrBtn').disabled = true;
+        $('startServiceBtn').hidden = false;
+        $('startServiceBtn').textContent = '🔄 重试启动';
+      } else {
+        // not_started / 其他
+        dotEl.className = 'whisper-dot offline';
+        textEl.textContent = 'Whisper: 启动中...';
+        $('asrBtn').hidden = false;
+        $('asrBtn').disabled = true;
+        $('startServiceBtn').hidden = true;
+      }
 
       const modelInfo = $('whisperModelInfo');
       modelInfo.hidden = false;
       const parts = [];
-      if (resp.model) parts.push(`模型: ${resp.model}`);
-      if (resp.device) parts.push(`设备: ${resp.device}`);
-      if (resp.compute_type) parts.push(`精度: ${resp.compute_type}`);
+      if (model) parts.push(`模型: ${model}`);
+      if (device) parts.push(`设备: ${device}`);
+      if (compute_type) parts.push(`精度: ${compute_type}`);
       modelInfo.textContent = parts.join(' | ');
-
-      $('asrBtn').hidden = false;
-      $('startServiceBtn').hidden = true;
     } else {
       dotEl.className = 'whisper-dot offline';
       textEl.textContent = 'Whisper: 未连接';
@@ -112,6 +138,7 @@ function loadWhisperStatus() {
       $('asrBtn').hidden = false;
       $('asrBtn').disabled = true;
       $('startServiceBtn').hidden = false;
+      $('startServiceBtn').textContent = '🚀 一键启动';
     }
   });
 }
@@ -211,13 +238,15 @@ async function handleASR(tab) {
   progressFill.style.width = '0%';
   progressText.textContent = `正在获取「${$('videoTitle').textContent}」的音频流...`;
   $('stayOnTabWarning').hidden = false;
+  $('cancelBtn').hidden = false;
+  _asrCancelFlag = false;
 
   try {
     const videoInfo = await getVideoInfoFromPage(tab);
     if (!videoInfo.bvid) throw new Error('无法获取视频BV号');
     currentBvid = videoInfo.bvid;
 
-    // Step 1: Get audio URL + comments from background (fast)
+    // Step 1: Get audio URL + comments from background
     const { audioUrl, videoInfo: info, comments } = await sendMessage({
       type: 'GET_AUDIO_INFO',
       bvid: videoInfo.bvid,
@@ -225,66 +254,222 @@ async function handleASR(tab) {
     });
 
     currentResult = { videoInfo: info, comments: comments || [] };
+    progressFill.style.width = '5%';
+    progressText.textContent = `正在启动转录「${info.title}」...`;
 
-    // Step 2: Directly call Whisper server from popup (simpler, for testing)
-    progressFill.style.width = '10%';
-    progressText.textContent = `正在转录「${info.title}」0s...`;
-    $('cancelBtn').hidden = false;
-
-    const controller = new AbortController();
-    const startTime = Date.now();
-    const timer = setInterval(() => {
-      const elapsed = Math.floor((Date.now() - startTime) / 1000);
-      progressText.textContent = `正在转录「${info.title}」${elapsed}秒...`;
-      progressFill.style.width = `${Math.min(10 + (elapsed % 40), 60)}%`;
-    }, 1000);
-
-    let data;
-    try {
-      const resp = await fetch(`${whisperServerUrl}/transcribe`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({ audio_url: audioUrl, language: 'zh' })
-      });
-      data = await resp.json();
-      if (!resp.ok) throw new Error(data.error || `转录失败 (${resp.status})`);
-    } finally {
-      clearInterval(timer);
-    }
-
-    progressText.textContent = '正在生成 Markdown...';
-    progressFill.style.width = '80%';
-
-    const markdown = generateMarkdown({
-      title: info.title, url: info.url, upName: info.upName,
-      duration: info.duration, pubdate: info.pubdate,
-      subtitles: data.segments, comments: comments
+    // Step 2: POST /transcribe directly (bypass offscreen)
+    progressText.textContent = `正在连接服务器...`;
+    const transcribeResp = await fetch(`${whisperServerUrl}/transcribe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ audio_url: audioUrl, language: 'zh' }),
+      signal: AbortSignal.timeout(10000),
     });
+    const body = await transcribeResp.json();
+    if (!transcribeResp.ok) throw new Error(body.error || `转录失败 (${transcribeResp.status})`);
+    if (!body.task_id) throw new Error('服务未返回 task_id');
 
-    currentResult = { ...currentResult, markdown };
+    const taskId = body.task_id;
+    // Store in session for potential restore
+    await chrome.storage.session.set({ asr_task_id: taskId, asr_server_url: whisperServerUrl, asr_bvid: currentBvid });
 
-    progressFill.style.width = '100%';
-    progress.hidden = true;
-    resultPanel.hidden = false;
-    $('cancelBtn').hidden = true;
+    // Step 3: Poll /task_status/<task_id> for progress
+    const overallStart = Date.now();
+    const overallTimeout = 30 * 60 * 1000;
 
-    const charCount = data.segments.reduce((sum, s) => sum + s.content.length, 0);
-    const audioMinutes = Math.round((data.duration || 0) / 60000);
-    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    $('resultStats').textContent = `语音识别: ${audioMinutes}分钟音频 → ${data.segments.length} 条文本，约 ${charCount} 字 | 用时 ${totalElapsed}s`;
-    const previewText = markdown.length > 3000 ? markdown.slice(0, 3000) + '\n\n... (预览截断)' : markdown;
-    $('preview').textContent = previewText;
-    sendCompletionNotification(info.title, '语音识别');
+    while (true) {
+      // Check overall timeout
+      if (Date.now() - overallStart > overallTimeout) {
+        throw new Error('转录超时 (30分钟)');
+      }
+
+      // Check cancel flag (set by handleCancel)
+      if (_asrCancelFlag) {
+        // Tell server to cancel
+        fetch(`${whisperServerUrl}/cancel/${taskId}`, { method: 'POST' }).catch(() => {});
+        throw new DOMException('Aborted', 'AbortError');
+      }
+
+      // Poll status
+      const statusResp = await fetch(`${whisperServerUrl}/task_status/${taskId}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (statusResp.ok) {
+        const status = await statusResp.json();
+
+        // Update progress bar
+        const pct = status.progress || 0;
+        progressFill.style.width = `${Math.min(pct, 60)}%`;
+
+        // Update progress text via buildPhaseText helper
+        const phaseText = buildPhaseTextForStatus(status, info.title);
+        if (phaseText) progressText.textContent = phaseText;
+
+        // Check terminal states
+        if (status.status === 'done') {
+          // Fetch full result
+          await sleep(500);
+          const full = await fetchTaskResult(whisperServerUrl, taskId);
+          if (full?.segments) {
+            const markdown = generateMarkdown({
+              title: info.title, url: info.url, upName: info.upName,
+              duration: info.duration, pubdate: info.pubdate,
+              subtitles: full.segments, comments
+            });
+            currentResult = { ...currentResult, markdown };
+
+            progressFill.style.width = '100%';
+            progress.hidden = true;
+            resultPanel.hidden = false;
+            $('cancelBtn').hidden = true;
+
+            const charCount = full.segments.reduce((sum, s) => sum + s.content.length, 0);
+            const audioMinutes = Math.round((full.duration || 0) / 60000);
+            $('resultStats').textContent = `语音识别: ${audioMinutes}分钟音频 → ${full.segments.length} 条文本，约 ${charCount} 字`;
+            const previewText = markdown.length > 3000 ? markdown.slice(0, 3000) + '\n\n... (预览截断)' : markdown;
+            $('preview').textContent = previewText;
+            sendCompletionNotification(info.title, '语音识别');
+          }
+          // Cleanup session
+          chrome.storage.session.remove(['asr_task_id', 'asr_server_url', 'asr_bvid']).catch(() => {});
+          return;
+        }
+
+        if (status.status === 'cancelled') {
+          throw new Error('转录已取消');
+        }
+
+        if (status.phase === 'failed' || status.error_class) {
+          throw new Error(status.error_message || status.error_class || '转录失败');
+        }
+      }
+
+      // Wait 2 seconds before next poll
+      await sleep(2000);
+    }
 
   } catch (err) {
     progress.hidden = true;
     $('cancelBtn').hidden = true;
-    showError(`转录失败: ${err.message}`);
+    if (err.name === 'AbortError') {
+      showError('转录已取消');
+    } else {
+      showError(`转录失败: ${err.message}`);
+    }
   } finally {
     extractBtn.disabled = false;
     asrBtn.disabled = false;
     $('stayOnTabWarning').hidden = true;
+  }
+}
+
+/** Build progress text from task_status JSON directly (no storage dependency). */
+function buildPhaseTextForStatus(status, title) {
+  const p = status.phase || status.status;
+  switch (p) {
+    case 'queued':
+      return `排队中...`;
+    case 'connecting':
+      return `连接中...`;
+    case 'downloading_audio':
+      return `正在下载B站音频... ${status.progress || 0}%`;
+    case 'transcribing': {
+      const elapsed = status.processed_ms ? `${Math.round(status.processed_ms / 1000)}s` : '';
+      const total = status.total_ms ? `${Math.round(status.total_ms / 1000)}s` : '';
+      const segInfo = status.segments_count ? `${status.segments_count}条` : '';
+      let etaText = '';
+      if (status.eta_sec && status.eta_sec > 0) {
+        etaText = status.eta_sec >= 120
+          ? ` 预计还有 ${Math.round(status.eta_sec / 60)}分`
+          : ` 预计还有 ${status.eta_sec}秒`;
+      }
+      return `正在转录「${title}」${elapsed}${total ? '/' + total : ''} ${segInfo}${etaText}`;
+    }
+    default:
+      return `正在转录「${title}」... ${status.progress || 0}%`;
+  }
+}
+
+async function fetchTaskResult(serverUrl, taskId) {
+  try {
+    const resp = await fetch(`${serverUrl}/task_result/${taskId}`, { signal: AbortSignal.timeout(5000) });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch { return null; }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+/**
+ * Listen to storage.onChanged for asr_task updates (real-time UI).
+ * Returns a promise that resolves when task is done/error/cancelled.
+ */
+function listenAsrProgress(title) {
+  const progressFill = $('progressFill');
+  const progressText = $('progressText');
+
+  // 实时 UI 更新 via storage.onChanged（不 resolve，仅更新进度显示）
+  const uiHandler = (changes, area) => {
+    if (area !== 'local' || !changes.asr_task) return;
+    const task = changes.asr_task.newValue;
+    if (!task) return;
+
+    const { status, phase, progress } = task;
+    const pct = progress || 0;
+    progressFill.style.width = `${Math.min(pct, 100)}%`;
+
+    const phaseText = buildPhaseText(task, title);
+    if (phaseText) progressText.textContent = phaseText;
+  };
+  chrome.storage.onChanged.addListener(uiHandler);
+
+  // 定期轮询获取完成/错误信号
+  return pollAsrProgress(currentBvid).then((result) => {
+    chrome.storage.onChanged.removeListener(uiHandler);
+    return result;
+  }).catch((err) => {
+    chrome.storage.onChanged.removeListener(uiHandler);
+    throw err;
+  });
+}
+
+/** 根据 task 的 phase/status 构造友好的进度文案 */
+function buildPhaseText(task, title) {
+  const { status, phase, progress } = task;
+  const p = phase || status;
+
+  switch (p) {
+    case 'starting':
+    case 'connecting':
+    case 'queued':
+      return `排队中...`;
+    case 'downloading_audio':
+      return `正在下载B站音频... ${progress || 0}%`;
+    case 'transcribing': {
+      const { processed_ms, total_ms, segments_count, eta_sec } = task;
+      const elapsed = processed_ms ? `${Math.round(processed_ms / 1000)}s` : '';
+      const total = total_ms ? `${Math.round(total_ms / 1000)}s` : '';
+      const segInfo = segments_count ? `${segments_count}条` : '';
+      let etaText = '';
+      if (eta_sec && eta_sec > 0) {
+        if (eta_sec >= 120) {
+          etaText = ` 预计还有 ${Math.round(eta_sec / 60)}分`;
+        } else if (eta_sec >= 60) {
+          etaText = ` 预计还有 1分${eta_sec % 60}秒`;
+        } else {
+          etaText = ` 预计还有 ${eta_sec}秒`;
+        }
+      }
+      return `正在转录「${title}」${elapsed}${total ? '/' + total : ''} ${segInfo}${etaText}`;
+    }
+    case 'done':
+    case 'cancelled':
+    case 'error':
+    case 'failed':
+      return null; // pollAsrProgress 会处理
+    default:
+      return `正在转录「${title}」... ${progress || 0}%`;
   }
 }
 
@@ -337,6 +522,7 @@ async function pollAsrProgress() {
   const progressText = $('progressText');
 
   return new Promise((resolve, reject) => {
+    let stuckCount = 0;
     const pollInterval = setInterval(async () => {
       try {
         const task = await sendMessage({ type: 'GET_ASR_STATUS', bvid: currentBvid });
@@ -345,20 +531,46 @@ async function pollAsrProgress() {
           clearInterval(pollInterval);
           showAsrResult(task);
           resolve();
-        } else if (task.status === 'error') {
+        } else if (task.status === 'error' || task.phase === 'failed') {
           clearInterval(pollInterval);
-          reject(new Error(task.error || '转录出错'));
+          reject(new Error(task.error_message || task.error || '转录出错'));
+        } else if (task.status === 'cancelled') {
+          clearInterval(pollInterval);
+          reject(new Error('转录已取消'));
         } else if (task.status === 'idle') {
-          // Task was cancelled
           clearInterval(pollInterval);
           reject(new Error('转录已取消'));
         } else {
-          // Still in progress - update UI
-          const elapsed = Math.floor((Date.now() - (task.startTime || Date.now())) / 1000);
-          const m = Math.floor(elapsed / 60);
-          const s = elapsed % 60;
-          progressText.textContent = `正在转录... ${m}分${s}秒`;
-          progressFill.style.width = `${Math.min(task.progress || 5, 60)}%`;
+          // 如果连续 15 次轮询（30 秒）都在 starting/connecting，诊断 offscreen
+          if ((task.status === 'starting' || task.status === 'connecting') && task.progress === 0) {
+            stuckCount++;
+            if (stuckCount >= 15) {
+              clearInterval(pollInterval);
+              chrome.storage.local.get('_asr_diag', r => {
+                const diag = r._asr_diag || 'undefined';
+                reject(new Error(`后台服务未响应 (${diag})，请重新加载扩展后重试`));
+              });
+              return;
+            }
+          } else {
+            stuckCount = 0; // 有进展就重置计数
+          }
+
+          const pct = task.progress || 0;
+          progressFill.style.width = `${Math.min(pct, 60)}%`;
+
+          // 使用 buildPhaseText 显示统一文案
+          const videoTitle = $('videoTitle')?.textContent || '';
+          const phaseText = buildPhaseText(task, videoTitle);
+          if (phaseText) {
+            progressText.textContent = phaseText;
+          } else {
+            // fallback: 显示简单计时
+            const elapsed = Math.floor((Date.now() - (task.startTime || Date.now())) / 1000);
+            const m = Math.floor(elapsed / 60);
+            const s = elapsed % 60;
+            progressText.textContent = `处理中... ${m}分${s}秒`;
+          }
         }
       } catch (err) {
         clearInterval(pollInterval);
@@ -370,48 +582,65 @@ async function pollAsrProgress() {
 
 async function handleCancel() {
   $('cancelBtn').hidden = true;
+  // Set flag to stop handleASR polling loop
+  _asrCancelFlag = true;
+  // Also tell server to cancel (in case we're in a phase where polling already stopped)
   try {
-    await sendMessage({ type: 'CANCEL_ASR' });
-  } catch (e) { /* ignore */ }
-  document.querySelectorAll('.actions .btn').forEach(b => b.disabled = false);
-  $('progress').hidden = true;
+    const { asr_task_id } = await chrome.storage.session.get('asr_task_id');
+    if (asr_task_id) {
+      fetch(`${whisperServerUrl}/cancel/${asr_task_id}`, { method: 'POST' }).catch(() => {});
+    }
+  } catch {}
   showError('转录已取消');
 }
 
 async function restoreAsrState() {
+  // Check if there's a running task from session storage
   try {
-    const task = await sendMessage({ type: 'GET_ASR_STATUS', bvid: currentBvid });
+    const { asr_task_id, asr_server_url, asr_bvid } = await chrome.storage.session.get([
+      'asr_task_id', 'asr_server_url', 'asr_bvid'
+    ]);
+    if (!asr_task_id) return; // No active task
 
-    if (task.status === 'done' && task.segments) {
-      showAsrResult(task);
-    } else if (task.status !== 'idle' && task.status !== 'error') {
-      const extractBtn = $('extractBtn');
-      const asrBtn = $('asrBtn');
-      const progress = $('progress');
-      const progressFill = $('progressFill');
-      const progressText = $('progressText');
-      const errorMsg = $('errorMsg');
-
-      extractBtn.disabled = true;
-      asrBtn.disabled = true;
-      errorMsg.hidden = true;
-      $('resultPanel').hidden = true;
-      progress.hidden = false;
-      $('cancelBtn').hidden = false;
-      progressFill.classList.remove('indeterminate');
-      progressFill.style.width = '10%';
-      progressText.textContent = '正在转录...（恢复上次进度）';
-
-      await pollAsrProgress();
-
-      extractBtn.disabled = false;
-      asrBtn.disabled = false;
-    } else if (task.status === 'error') {
-      $('errorMsg').textContent = task.error || '转录失败';
-      $('errorMsg').hidden = false;
+    // Check with server if task is still active
+    const url = asr_server_url || whisperServerUrl;
+    const resp = await fetch(`${url}/task_status/${asr_task_id}`, { signal: AbortSignal.timeout(3000) });
+    if (!resp.ok) {
+      // Task expired or doesn't exist — clean up
+      chrome.storage.session.remove(['asr_task_id', 'asr_server_url', 'asr_bvid']).catch(() => {});
+      return;
     }
-  } catch (err) {
-    // Silent - no existing task to restore
+
+    const status = await resp.json();
+
+    if (status.status === 'done') {
+      // Task completed while popup was closed — fetch result
+      chrome.storage.session.remove(['asr_task_id', 'asr_server_url', 'asr_bvid']).catch(() => {});
+      const full = await fetchTaskResult(url, asr_task_id);
+      if (full?.segments) {
+        const { videoInfo, comments } = currentResult || {};
+        const title = videoInfo?.title || '';
+        const markdown = generateMarkdown({
+          title, url: '', upName: '', duration: '',
+          pubdate: '', subtitles: full.segments, comments
+        });
+        $('resultPanel').hidden = false;
+        $('resultStats').textContent = `语音识别: ${Math.round((full.duration || 0) / 60000)}分钟音频 → ${full.segments.length} 条文本`;
+        $('preview').textContent = markdown;
+        sendCompletionNotification(title, '语音识别');
+      }
+      return;
+    }
+
+    if (status.status === 'processing' || status.phase === 'transcribing') {
+      // Task still running — show UI but don't start polling (popup will close again)
+      const pct = status.progress || 0;
+      $('progress').hidden = false;
+      $('progressFill').style.width = `${Math.min(pct, 60)}%`;
+      $('progressText').textContent = `转录进行中... ${pct}%（关闭窗口不会中断）`;
+    }
+  } catch {
+    // Server unreachable — silently ignore
   }
 }
 
@@ -503,33 +732,82 @@ async function handleStartService() {
     });
 
     if (resp.nativeStarted) {
-      // Native host 成功启动，等待服务就绪
+      // Native host 成功启动，等待服务就绪（最长 180 秒，容忍模型下载）
       startBtn.textContent = '⏳ 等待就绪...';
-      for (let i = 0; i < 15; i++) {
+
+      // 分阶段等待：前 15 秒快速探测，之后慢速探测并展示状态
+      const waitStart = Date.now();
+      let lastPhase = '';
+
+      for (let i = 0; i < 180; i++) {
         await new Promise(r => setTimeout(r, 1000));
         const status = await sendMessage({
           type: 'CHECK_WHISPER',
           serverUrl: whisperServerUrl,
         });
-        if (status.available) {
-          loadWhisperStatus(); // 刷新状态
+
+        if (!status.available) {
+          // 服务 HTTP 还未起来
+          if (i === 3) startBtn.textContent = '⏳ 等待服务启动...';
+          continue;
+        }
+
+        // 服务 HTTP 已响应，检查 phase
+        const { phase, progress, error_class, error_message } = status;
+
+        if (phase === 'ready') {
+          loadWhisperStatus();
           return;
         }
+
+        if (phase === 'failed') {
+          showError(`服务启动失败: ${error_message || error_class || '未知错误'}`);
+          startBtn.disabled = false;
+          startBtn.textContent = '🔄 重试启动';
+          return;
+        }
+
+        // 显示加载/下载进度
+        if (phase !== lastPhase) {
+          lastPhase = phase;
+          const phaseText = {
+            'loading_model': '模型加载中',
+            'downloading_model': '模型下载中（首次约 500MB）',
+            'not_started': '启动中',
+          }[phase] || phase;
+          startBtn.textContent = `⏳ ${phaseText}...`;
+        }
+
+        if (progress && progress > 0) {
+          startBtn.textContent = `⏳ ${lastPhase === 'downloading_model' ? '模型下载中' : '加载中'} ${progress}%`;
+        }
+
+        // 每 30 秒更新一下状态（防止以为卡死）
+        if (i > 0 && i % 30 === 0) {
+          startBtn.textContent = `⏳ 等待中 (${Math.round((Date.now() - waitStart) / 1000)}秒)...`;
+        }
       }
-      throw new Error('服务启动超时，请检查终端窗口');
+
+      // 超时
+      showError('服务启动超时，请查看日志 whisper_server/logs/server.log');
+      startBtn.disabled = false;
+      startBtn.textContent = '🔄 重试启动';
+      return;
     }
   } catch (err) {
     // Native host 未安装或失败，走剪贴板 + 提示路径
-    const serverDir = 'whisper_server';
-    const cmd = `python server.py`;
+  }
 
-    try {
-      await navigator.clipboard.writeText(cmd);
-      showToast(`✅ 启动命令已复制: ${cmd}`);
-      showToast('💡 请在终端中粘贴运行，或双击 whisper_server/start_server.bat');
-    } catch (_) {
-      showToast(`请在终端运行: cd whisper_server && ${cmd}`);
-    }
+  // Native host 失败降级：提示用户双击 start_server.bat
+  const serverDir = 'whisper_server';
+  const cmd = `cd ${serverDir} && start start_server.bat`;
+
+  try {
+    await navigator.clipboard.writeText(cmd);
+    showToast('✅ 启动命令已复制');
+    showToast('💡 请进入 whisper_server 文件夹，双击 start_server.bat');
+  } catch (_) {
+    showToast(`请在终端运行: ${cmd}`);
   }
 
   startBtn.disabled = false;

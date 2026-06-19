@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=520">
+  <title>b量子阅读 - 安装向导</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      color: #1a1a1a;
+      background: #f5f5f5;
+      width: 520px;
+      min-height: 300px;
+    }
+    .container { padding: 16px; }
+    h1 { font-size: 18px; color: #fb7299; margin-bottom: 12px; }
+    h2 { font-size: 14px; color: #333; margin: 12px 0 8px; }
+    .section {
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .field {
+      margin-bottom: 10px;
+    }
+    .field label {
+      display: block;
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .field input {
+      width: 100%;
+      padding: 6px 8px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      font-size: 13px;
+      background: #fafafa;
+    }
+    .field input[readonly] {
+      background: #f0f0f0;
+      color: #333;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      width: 100%;
+      margin-bottom: 6px;
+    }
+    .btn-primary { background: #fb7299; color: white; }
+    .btn-primary:hover { background: #e8658a; }
+    .btn-secondary { background: #f0f0f0; color: #333; }
+    .btn-secondary:hover { background: #e0e0e0; }
+    .btn-success { background: #00a86b; color: white; }
+    .btn-success:hover { background: #008f5b; }
+    .hint {
+      font-size: 12px;
+      color: #999;
+      margin: 4px 0;
+    }
+    .copy-hint {
+      font-size: 11px;
+      color: #00a86b;
+      margin: 2px 0;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .copy-hint.show { opacity: 1; }
+    #statusContainer { min-height: 100px; }
+    .error { color: #ff4d4f; font-size: 12px; }
+    .ok { color: #00a86b; font-size: 12px; }
+    .loading-text { color: #999; text-align: center; padding: 24px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔧 安装向导</h1>
+
+    <div class="section">
+      <h2>📋 扩展信息</h2>
+      <div class="field">
+        <label>扩展 ID</label>
+        <input id="extensionId" type="text" readonly>
+      </div>
+      <div class="field">
+        <label>whisper_server 目录</label>
+        <input id="installDir" type="text" readonly>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>🚀 一键安装</h2>
+      <p class="hint">1. 打开文件管理器，进入上方 whisper_server 目录</p>
+      <p class="hint">2. 在目录地址栏输入 <code>cmd</code> 回车打开命令提示符</p>
+      <p class="hint">3. 在命令提示符中粘贴以下命令并回车：</p>
+      <div id="commandBox" style="background:#1e1e1e;color:#d4d4d4;padding:8px;border-radius:4px;font-family:monospace;font-size:12px;margin:8px 0;word-break:break-all;">
+        加载中...
+      </div>
+      <button id="copyCmdBtn" class="btn btn-secondary">📋 复制安装命令</button>
+      <div id="copyHint" class="copy-hint">✅ 已复制！</div>
+      <p class="hint">安装完成后点击下方按钮检查状态：</p>
+      <button id="checkStatusBtn" class="btn btn-success">🔄 检查安装状态</button>
+    </div>
+
+    <div class="section">
+      <h2>📊 安装状态</h2>
+      <div id="statusContainer" class="loading-text">点击"检查安装状态"...</div>
+    </div>
+  </div>
+
+  <script src="install_wizard.js"></script>
+</body>
+</html>

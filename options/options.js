@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   $('testWhisperBtn').addEventListener('click', async () => {
-    const url = $('whisperServerUrl').value || 'http://localhost:8787';
+    const url = $('whisperServerUrl').value || 'http://127.0.0.1:8787';
     const resultEl = $('whisperTestResult');
     resultEl.textContent = '连接中...';
     resultEl.style.color = '#666';
@@ -50,9 +50,16 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const resp = await fetch(`${url}/status`, { signal: AbortSignal.timeout(3000) });
       const data = await resp.json();
-      if (data.ready) {
-        resultEl.textContent = `已连接 (模型: ${data.model})`;
+      const phase = data.phase || (data.ready ? 'ready' : 'not_ready');
+      if (phase === 'ready') {
+        resultEl.textContent = `已连接 (模型: ${data.model || 'unknown'})`;
         resultEl.style.color = '#00a86b';
+      } else if (phase === 'downloading_model' || phase === 'loading_model') {
+        resultEl.textContent = `模型 ${phase === 'downloading_model' ? '下载' : '加载'}中... ${data.progress || 0}%`;
+        resultEl.style.color = '#faad14';
+      } else if (phase === 'failed') {
+        resultEl.textContent = `错误: ${data.error_message || '未知错误'}`;
+        resultEl.style.color = '#ff4d4f';
       } else {
         resultEl.textContent = '服务已启动，模型加载中...';
         resultEl.style.color = '#faad14';
@@ -61,6 +68,15 @@ document.addEventListener('DOMContentLoaded', () => {
       resultEl.textContent = '无法连接，请确认 Whisper 服务已启动';
       resultEl.style.color = '#ff4d4f';
     }
+  });
+
+  $('whisperRepairBtn').addEventListener('click', () => {
+    chrome.windows.create({
+      url: chrome.runtime.getURL('popup/install_wizard.html'),
+      type: 'popup',
+      width: 540,
+      height: 600,
+    });
   });
 });
 

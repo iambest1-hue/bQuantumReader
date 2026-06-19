@@ -153,6 +153,16 @@ header h1 {
   background: #00a86b;
 }
 
+.whisper-dot.loading {
+  background: #faad14;
+  animation: loadingPulse 1s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .whisper-dot.offline {
   background: #ff4d4f;
 }
