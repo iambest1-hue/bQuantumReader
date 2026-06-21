@@ -1,6 +1,6 @@
 {
   "name": "com.bquantum.whisper",
-  "description": "b量子阅读 - Whisper 服务 Native Messaging Host",
+  "description": "b量子速读 - Whisper 服务 Native Messaging Host",
   "path": "{{PATH}}",
   "type": "stdio",
   "allowed_origins": [

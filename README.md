@@ -1,4 +1,4 @@
-# bQuantumReader (b量子阅读)
+# bQuantumReader (b量子速读)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-blue)

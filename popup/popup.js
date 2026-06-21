@@ -838,14 +838,14 @@ function sendCompletionNotification(title, type) {
     }
   });
 
-  document.title = `✅ 完成 - b量子阅读`;
-  setTimeout(() => { document.title = 'b量子阅读'; }, 5000);
+  document.title = `✅ 完成 - b量子速读`;
+  setTimeout(() => { document.title = 'b量子速读'; }, 5000);
 
   // 系统通知
   chrome.notifications.create({
     type: 'basic',
     iconUrl: chrome.runtime.getURL('icons/icon48.png'),
-    title: 'b量子阅读 - 完成',
+    title: 'b量子速读 - 完成',
     message: `「${title}」${type}已完成！`,
     priority: 2,
   });

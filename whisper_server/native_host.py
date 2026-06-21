@@ -1,5 +1,5 @@
 """
-b量子阅读 - Native Messaging Host
+b量子速读 - Native Messaging Host
 
 Chrome 扩展通过 Native Messaging 与此脚本通信，实现一键启停 Whisper 服务。
 

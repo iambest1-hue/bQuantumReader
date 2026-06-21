@@ -1,5 +1,5 @@
 """
-b量子阅读 - 本地 Whisper 语音识别服务 (v2)
+b量子速读 - 本地 Whisper 语音识别服务 (v2)
 
 优化：
   - 状态机 phase/progress/error 细粒度反馈
@@ -538,7 +538,7 @@ def route_check_ffmpeg():
 # =========================================================================
 
 if __name__ == "__main__":
-    logger.info("b量子阅读 Whisper Server v2 starting…")
+    logger.info("b量子速读 Whisper Server v2 starting…")
     logger.info(f"Model={MODEL_SIZE} Device={DEVICE} Compute={COMPUTE_TYPE} Port={ACTUAL_PORT}")
 
     _set_state(

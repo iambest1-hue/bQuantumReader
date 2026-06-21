@@ -1,4 +1,4 @@
-# b量子阅读 - Whisper 语音识别服务启动脚本
+# b量子速读 - Whisper 语音识别服务启动脚本
 # Whisper ASR Service Launcher
 param(
     [string]$Model = $env:WHISPER_MODEL,
@@ -14,7 +14,7 @@ $ErrorActionPreference = "Continue"
 
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Magenta
-Write-Host "  b量子阅读 - Whisper 语音识别服务" -ForegroundColor White
+Write-Host "  b量子速读 - Whisper 语音识别服务" -ForegroundColor White
 Write-Host "  Whisper ASR Service" -ForegroundColor DarkGray
 Write-Host "============================================" -ForegroundColor Magenta
 Write-Host ""

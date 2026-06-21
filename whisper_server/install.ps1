@@ -1,4 +1,4 @@
-# b量子阅读 - Whisper 一键安装脚本
+# b量子速读 - Whisper 一键安装脚本
 # Install Whisper ASR Service: venv + deps + model + ffmpeg + native host
 
 param(
@@ -34,7 +34,7 @@ function Save-State {
 # ═══════════════ Banner ═══════════════
 Write-Host ""
 Write-Host "============================================" -ForegroundColor Magenta
-Write-Host "  b量子阅读 - Whisper 一键安装" -ForegroundColor White
+Write-Host "  b量子速读 - Whisper 一键安装" -ForegroundColor White
 Write-Host "  One-Click Install" -ForegroundColor DarkGray
 if ($Repair) { Write-Host "  [修复模式]" -ForegroundColor Yellow }
 Write-Host "============================================" -ForegroundColor Magenta
