@@ -1,16 +1,42 @@
 # b量子速读 (bQuantumReader)
 
-一款 Android 端的 B站 视频内容提取工具。粘贴视频链接，一键提取字幕并生成结构化 Markdown，支持预览、复制、分享和保存。
+**B站 视频内容提取工具 — Android App（开发中）**
+
+粘贴 B站 视频链接，一键提取字幕和评论，生成结构化 Markdown。支持预览、复制、分享和保存。
 
 ## 功能
 
-- **链接解析** — 粘贴/输入 B站 视频链接，自动提取 bvid
-- **视频信息** — 展示封面、标题、UP主、时长
+- **链接解析** — 粘贴 B站 视频链接，自动提取 bvid
+- **视频信息展示** — 封面、标题、UP主、时长、播放量
 - **字幕提取** — 调用 B站 CC 字幕 API（WBI 签名），提取带时间轴的字幕内容
-- **Markdown 生成** — 将字幕自动整理为结构化 Markdown，含视频元信息和时间戳
-- **结果操作** — 预览 Markdown、复制到剪贴板、分享到其他 APP、保存为 .md 文件
+- **Markdown 生成** — 自动整理为结构化 Markdown，含视频元信息、时间戳字幕和评论
+- **结果操作** — 预览渲染效果、复制到剪贴板、分享到其他 APP、保存为 .md 文件
 - **评论提取** — 同步获取视频热门评论
-- **B站 登录** — 扫码登录以访问需要登录的内容
+- **B站 登录** — 扫码登录，访问需要登录权限的内容
+
+## 下载
+
+[**下载 v0.2.1 APK**](https://github.com/iambest1-hue/bQuantumReader/releases/tag/v0.2.1)
+
+- 要求：Android 10.0+（API 29+）
+- 架构：arm64-v8a
+- 大小：~4MB
+
+## 安装
+
+1. 从 [Releases](https://github.com/iambest1-hue/bQuantumReader/releases) 下载最新 APK
+2. 在手机上打开 APK 文件
+3. 如提示"未知来源应用"，前往设置允许安装
+4. 首次打开可能提示"Google Play 保护机制"— 点击**更多 → 仍要安装**
+
+## 使用方法
+
+1. 打开 APP
+2. 复制一个 B站 视频链接（如 `https://www.bilibili.com/video/BV1xx411c7mD`）
+3. 粘贴到输入框，点击解析
+4. 查看视频信息
+5. 点击**提取字幕**获取 CC 字幕内容
+6. 在结果面板中预览、复制、分享或保存 Markdown
 
 ## 截图
 
@@ -26,19 +52,19 @@
 | 网络 | Retrofit + OkHttp |
 | 图片 | Coil |
 | 依赖注入 | Koin |
-| 数据持久化 | DataStore Preferences |
+| 持久化 | DataStore Preferences |
 | 最低 API | Android 10 (API 29) |
 | 目标 API | Android 14 (API 34) |
 
-## 快速开始
+## 构建
 
 ### 前置要求
 
-- Android Studio Hedgehog (2023.1.1) 或更新
+- Android Studio Hedgehog (2023.1.1)+
 - JDK 17
 - Android SDK 34
 
-### 构建
+### 命令
 
 ```bash
 git clone https://github.com/iambest1-hue/bQuantumReader.git
@@ -46,56 +72,47 @@ cd bQuantumReader
 ./gradlew assembleDebug
 ```
 
-### 发布构建
+### 发布签名
 
-发布签名的 APK 需要配置签名密钥。编辑 `app/build.gradle.kts` 中的 `signingConfigs` 块：
+发布 APK 需要配置签名密钥。修改 `app/build.gradle.kts` 添加 `signingConfigs`：
 
 ```kotlin
 signingConfigs {
     create("release") {
         storeFile = file("your-keystore.jks")
-        storePassword = "your-store-password"
-        keyAlias = "your-key-alias"
-        keyPassword = "your-key-password"
+        storePassword = "your-password"
+        keyAlias = "your-alias"
+        keyPassword = "your-password"
     }
 }
 ```
 
-然后将 `signingConfig` 重新添加到 `buildTypes.release` 中。
+然后在 `buildTypes.release` 中添加 `signingConfig = signingConfigs.getByName("release")`。
 
 ## 项目结构
 
 ```
 app/
-├── MainActivity.kt              # 单 Activity 入口
-├── App.kt                       # Application + Koin 初始化
+├── MainActivity.kt              # 单 Activity
+├── App.kt                       # Application + Koin
 ├── ui/
-│   ├── screen/
-│   │   ├── HomeScreen.kt        # 主页面
-│   │   ├── SettingsScreen.kt    # 设置页
-│   │   └── LoginViewModel.kt    # 登录逻辑
-│   ├── component/               # UI 组件
+│   ├── screen/                  # 页面（Home、Settings）
+│   ├── component/               # 组件（LinkInput、VideoInfoCard 等）
 │   └── theme/                   # Material3 主题
 ├── data/
-│   ├── api/                     # B站 API（Retrofit + WBI 签名）
+│   ├── api/                     # B站 API + WBI 签名 + MD5
 │   ├── model/                   # 数据模型
 │   ├── repository/              # 数据仓库
-│   └── local/                   # Cookie 存储、凭证管理
+│   └── local/                   # Cookie / 凭证存储
 ├── domain/
 │   ├── LinkParser.kt            # URL 解析
 │   └── MarkdownGen.kt           # Markdown 生成
-└── util/                        # 工具类
+└── util/                        # 剪贴板、文件工具
 ```
 
-## API 说明
+## 相关链接
 
-本项目实现了 B站 API 的纯净 Kotlin 重写：
-
-- WBI 签名算法（Mixin Key 提取 + 参数签名）
-- 纯 Kotlin MD5 实现
-- 视频信息、字幕列表、字幕内容、评论等接口
-
-详见 `readme/` 目录下的详细文档。
+- [Chrome 扩展版](https://github.com/iambest1-hue/bQuantumReader)（同仓库，另有浏览器扩展实现）
 
 ## 许可证
 
