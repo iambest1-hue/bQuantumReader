@@ -90,28 +90,33 @@ bQuantumReader/
 
 ---
 
-## 📱 Android App（开发中）
 
-将 bQuantumReader 的核心能力移植到 Android 平台，原生体验，无需电脑。
+## 📱 Android App
 
-### 规划功能
+将 bQuantumReader 的核心能力移植到 Android 平台，原生体验，无需电脑。已独立为 [bQuantumReader-Android](https://github.com/iambest1-hue/bQuantumReader-Android) 仓库。
 
-- **字幕提取** — 解析 B站视频页，获取 CC 字幕并生成 Markdown
-- **评论提取** — 获取视频热门评论
-- **语音识别** — 通过 HTTP 调用电脑端 Whisper 服务进行转写
-- **本地存储** — 导出 Markdown 文件到设备本地
+### 功能
+
+- **链接解析** — 粘贴 B站 视频链接，自动提取 bvid
+- **视频信息展示** — 封面、标题、UP主、时长
+- **字幕提取** — 调用 B站 CC 字幕 API（WBI 签名），提取带时间轴的字幕内容
+- **Markdown 生成** — 自动整理为结构化 Markdown
+- **结果操作** — 预览、复制、分享、保存为 .md 文件
+- **评论提取** — 同步获取视频热门评论
+- **B站 登录** — 扫码登录
+
+### 下载
+
+[**下载 v0.2.1 APK**](https://github.com/iambest1-hue/bQuantumReader-Android/releases/tag/v0.2.1)
+要求：Android 10.0+（API 29+）
 
 ### 技术栈
 
-- **语言/UI** — Kotlin + Jetpack Compose
-- **网络** — Retrofit + OkHttp
-- **架构** — MVVM + Repository Pattern
+Kotlin + Jetpack Compose + Material3 / Retrofit + OkHttp / MVVM + Repository
 
-### 状态
+### 更多信息
 
-目前处于规划阶段，欢迎参与开发。开发计划与算法参考见 [`archive/android-plan`](https://github.com/iambest1-hue/bQuantumReader/tree/archive/android-plan) 分支。
-
----
+前往 [bQuantumReader-Android](https://github.com/iambest1-hue/bQuantumReader-Android) 查看完整说明、安装步骤、构建指南和项目结构。
 
 ## 自愿捐助
 
