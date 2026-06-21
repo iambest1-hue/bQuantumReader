@@ -1,9 +1,0 @@
-{
-  "name": "com.bquantum.whisper",
-  "description": "b量子阅读 - Whisper 服务 Native Messaging Host",
-  "path": "C:\\path\\to\\whisper_server\\native_host.py",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://替换为你的扩展ID/"
-  ]
-}

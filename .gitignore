@@ -1,9 +1,56 @@
-.claude/
-whisper_server/logs/
-whisper_server/runtime.json
-whisper_server/install_state.json
-server.log
+# === 项目特定的 build artifact ===
+b量子阅读.zip
+
+# === Python ===
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# === Node / JS ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === OS files ===
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+
+# === IDE / Editor ===
+.vscode/
+.idea/
+*.iml
+*.sublime-workspace
+*.sublime-project
+.project
+.classpath
+.settings/
+
+# === Logs ===
+whisper_server/logs/
+server.log
+*.log
+
+# === Runtime / State ===
+whisper_server/runtime.json
+whisper_server/install_state.json
+whisper_server/.venv/
+whisper_server/com.bquantum.whisper.json
+
+# === Build scripts (internal) ===
 _pack.ps1
 gen_bat.ps1
+
+# === Claude (AI assistant) ===
+.claude/
