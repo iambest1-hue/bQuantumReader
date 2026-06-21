@@ -9,33 +9,50 @@
 
 ---
 
-## 功能特性
+## 📦 Chrome 扩展
+
+### 功能特性
 
 - **字幕提取** — 自动获取 B站 CC 字幕，带时间戳生成 Markdown
 - **评论提取** — 同步获取热门评论，集成到输出文档
 - **语音识别** — 支持本地 Whisper 服务（faster-whisper），无需上传，保护隐私
 - **一键启动** — 原生消息主机 + 安装向导，零配置启动 Whisper
-- **后台转录** — 关闭弹窗后仍继续处理，随时回来查看结果
+- **后台转录** — 关闭弹窗后继续处理，随时回来查看结果
 - **独立窗口** — 可脱离 Chrome 工具栏独立操作
 
-## 快速开始
+### 下载
 
-### 前置条件
-
-- Chrome 浏览器（推荐最新版）
-- Python 3.8+（仅语音识别需要）
+从 [Releases](https://github.com/iambest1-hue/bQuantumReader/releases) 下载最新版 `bQuantumReader-v*.zip`。
 
 ### 安装步骤
 
-1. 下载本项目，解压或 `git clone`
+1. 解压下载的 zip 包
 2. 打开 Chrome，进入 `chrome://extensions/`
 3. 打开右上角 **开发者模式**
-4. 点击 **加载已解压的扩展程序**，选择项目文件夹
-5. 打开任意 B站 视频，点击扩展图标开始使用
+4. 点击 **加载已解压的扩展程序**，选择解压后的文件夹
+5. 打开任意 B站 视频页面，点击扩展图标开始使用
 
-> 详细安装指南见 [INSTALL.md](INSTALL.md)，语音识别服务安装见其中第三节。
+> 语音识别服务的详细安装指南见 [INSTALL.md](INSTALL.md)。
 
-## 项目结构
+### 语音识别
+
+支持本地 Whisper 服务，数据无需上传，完全本地处理。
+
+| 模型 | 大小 | 速度 | 适用场景 |
+|------|------|------|---------|
+| tiny | ~80MB | 最快 | 测试/低配电脑 |
+| base | ~150MB | 快 | 日常使用 |
+| small | ~500MB | 中等 | 默认推荐 |
+| medium | ~1.5GB | 慢 | 高质量需求 |
+| large-v3 | ~3GB | 最慢 | 最高精度 |
+
+### 技术栈
+
+- **Chrome Extension** — Manifest V3, 纯 JavaScript
+- **Whisper 服务** — Python Flask, faster-whisper (CTranslate2)
+- **通信** — Native Messaging API, HTTP REST
+
+### 项目结构
 
 ```
 bQuantumReader/
@@ -60,29 +77,30 @@ bQuantumReader/
     └── start_server.ps1 / .bat# 启动脚本
 ```
 
-## 语音识别
+---
 
-支持本地 Whisper 服务，数据无需上传，完全本地处理。
+## 📱 Android App（开发中）
 
-| 模型 | 大小 | 速度 | 适用场景 |
-|------|------|------|---------|
-| tiny | ~80MB | 最快 | 测试/低配电脑 |
-| base | ~150MB | 快 | 日常使用 |
-| small | ~500MB | 中等 | 默认推荐 |
-| medium | ~1.5GB | 慢 | 高质量需求 |
-| large-v3 | ~3GB | 最慢 | 最高精度 |
+将 bQuantumReader 的核心能力移植到 Android 平台，原生体验，无需电脑。
 
-## 技术栈
+### 规划功能
 
-- **Chrome Extension** — Manifest V3, 纯 JavaScript
-- **Whisper 服务** — Python Flask, faster-whisper (CTranslate2)
-- **通信** — Native Messaging API, HTTP REST
+- **字幕提取** — 解析 B站视频页，获取 CC 字幕并生成 Markdown
+- **评论提取** — 获取视频热门评论
+- **语音识别** — 通过 HTTP 调用电脑端 Whisper 服务进行转写
+- **本地存储** — 导出 Markdown 文件到设备本地
 
-## 开发计划
+### 技术栈
 
-- [ ] Android 客户端 (Kotlin + Jetpack Compose)
-- [ ] Chrome Web Store 上架
-- [ ] 多语言界面支持
+- **语言/UI** — Kotlin + Jetpack Compose
+- **网络** — Retrofit + OkHttp
+- **架构** — MVVM + Repository Pattern
+
+### 状态
+
+目前处于规划阶段，欢迎参与开发。开发计划与算法参考见 [`archive/android-plan`](https://github.com/iambest1-hue/bQuantumReader/tree/archive/android-plan) 分支。
+
+---
 
 ## 自愿捐助
 
