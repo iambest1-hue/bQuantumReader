@@ -90,7 +90,7 @@ bQuantumReader/
 
 | 微信 | 支付宝 |
 |------|--------|
-| ![微信收款码](assets/donate/wechat.jpg) | ![支付宝收款码](assets/donate/alipay.jpg) |
+| ![微信收款码](assets/donate/wechat.png) | ![支付宝收款码](assets/donate/alipay.png) |
 
 ## 许可证
 
