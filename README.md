@@ -127,6 +127,13 @@ Kotlin + Jetpack Compose + Material3 / Retrofit + OkHttp / MVVM + Repository
 |------|--------|
 | ![微信收款码](assets/donate/wechat.png) | ![支付宝收款码](assets/donate/alipay.png) |
 
+## 关于
+
+- **项目地址**：https://github.com/iambest1-hue/bQuantumReader-Android
+- **作者**：[iambest1-hue](https://github.com/iambest1-hue)
+
+---
+
 ## 许可证
 
 [MIT License](LICENSE)
