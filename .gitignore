@@ -21,3 +21,6 @@ Thumbs.db
 # Signing
 *.jks
 *.apk
+
+# Large assets
+icon.gif

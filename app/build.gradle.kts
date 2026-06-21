@@ -15,21 +15,11 @@ android {
         versionName = "0.2.1"
     }
 
-    signingConfigs {
-        create("release") {
-            storeFile = file("../bfastreader.jks")
-            storePassword = "bfastreader"
-            keyAlias = "bfastreader"
-            keyPassword = "bfastreader"
-        }
-    }
-
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("release")
         }
     }
 
