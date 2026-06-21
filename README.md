@@ -2,14 +2,17 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Chrome MV3](https://img.shields.io/badge/Chrome-MV3-blue)
+![Edge](https://img.shields.io/badge/Edge-Chromium-purple)
 
-从 B站视频提取 CC 字幕和评论，支持本地 Whisper 语音识别，生成结构化 Markdown 知识库。
+从 B站视频提取 CC 字幕和评论，支持本地 Whisper 语音识别，生成结构化 Markdown 知识库。兼容 Chrome 与 Edge 浏览器。
 
-> A Chrome extension to extract Bilibili subtitles and comments with local Whisper ASR support. Generates structured Markdown.
+> A browser extension (Chrome / Edge) to extract Bilibili subtitles and comments with local Whisper ASR support. Generates structured Markdown.
 
 ---
 
-## 📦 Chrome 扩展
+## 📦 浏览器扩展
+
+兼容 Chrome 和 Edge 浏览器。
 
 ### 功能特性
 
@@ -26,11 +29,19 @@
 
 ### 安装步骤
 
+**Chrome：**
 1. 解压下载的 zip 包
-2. 打开 Chrome，进入 `chrome://extensions/`
+2. 地址栏输入 `chrome://extensions/` 回车
 3. 打开右上角 **开发者模式**
 4. 点击 **加载已解压的扩展程序**，选择解压后的文件夹
-5. 打开任意 B站 视频页面，点击扩展图标开始使用
+
+**Edge：**
+1. 解压下载的 zip 包
+2. 地址栏输入 `edge://extensions/` 回车
+3. 打开左下角 **开发人员模式**
+4. 点击 **加载解压缩的扩展**，选择解压后的文件夹
+
+安装后打开任意 B站 视频页面，点击扩展图标即可使用。
 
 > 语音识别服务的详细安装指南见 [INSTALL.md](INSTALL.md)。
 
@@ -48,7 +59,7 @@
 
 ### 技术栈
 
-- **Chrome Extension** — Manifest V3, 纯 JavaScript
+- **浏览器扩展** — Manifest V3, 纯 JavaScript (兼容 Chrome / Edge)
 - **Whisper 服务** — Python Flask, faster-whisper (CTranslate2)
 - **通信** — Native Messaging API, HTTP REST
 
@@ -56,7 +67,7 @@
 
 ```
 bQuantumReader/
-├── manifest.json              # Chrome 扩展配置 (MV3)
+├── manifest.json              # 扩展配置 (Manifest V3)
 ├── background/                # Service Worker (消息路由、API 调用)
 ├── content/                   # 页面注入脚本 (B站视频信息提取)
 ├── popup/                     # 主界面 + 安装向导
