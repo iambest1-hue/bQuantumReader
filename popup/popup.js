@@ -1,4 +1,5 @@
 import { generateMarkdown, sanitizeFilename } from '../shared/markdown.js';
+import { formatTimestamp } from '../shared/bilibili-api.js';
 
 const $ = id => document.getElementById(id);
 
@@ -53,8 +54,25 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check Whisper server status
   loadWhisperStatus();
 
-  // Buttons
-  $('extractBtn').addEventListener('click', () => handleExtract(tab));
+  // Detect series (multi-P videos) via background
+  const seriesInfo = await detectSeries(tab.url);
+
+  if (seriesInfo.isSeries) {
+    // Series detected: show series-specific UI, hide single extract button
+    $('extractBtn').hidden = true;
+    $('seriesPanel').hidden = false;
+    $('seriesTotal').textContent = seriesInfo.total;
+
+    $('extractCurrentBtn').addEventListener('click', () => handleExtract(tab));
+    $('extractSeriesBtn').addEventListener('click', () => handleExtractSeries(tab, seriesInfo.pages));
+  } else {
+    // Single video: keep existing extract button
+    $('seriesPanel').hidden = true;
+    $('extractBtn').hidden = false;
+    $('extractBtn').addEventListener('click', () => handleExtract(tab));
+  }
+
+  // Buttons shared by both modes
   $('asrBtn').addEventListener('click', () => handleASR(tab));
   $('downloadBtn').addEventListener('click', handleDownload);
   $('cancelBtn').addEventListener('click', handleCancel);
@@ -582,8 +600,9 @@ async function pollAsrProgress() {
 
 async function handleCancel() {
   $('cancelBtn').hidden = true;
-  // Set flag to stop handleASR polling loop
+  // Set flags for both ASR and series cancellation
   _asrCancelFlag = true;
+  await chrome.storage.session.set({ series_cancelled: true });
   // Also tell server to cancel (in case we're in a phase where polling already stopped)
   try {
     const { asr_task_id } = await chrome.storage.session.get('asr_task_id');
@@ -591,7 +610,7 @@ async function handleCancel() {
       fetch(`${whisperServerUrl}/cancel/${asr_task_id}`, { method: 'POST' }).catch(() => {});
     }
   } catch {}
-  showError('转录已取消');
+  showError('已取消');
 }
 
 async function restoreAsrState() {
@@ -849,4 +868,206 @@ function sendCompletionNotification(title, type) {
     message: `「${title}」${type}已完成！`,
     priority: 2,
   });
+}
+
+// ====== Series / Multi-P episode extraction ======
+
+/** Detect if the current video is part of a series */
+async function detectSeries(url) {
+  try {
+    return await sendMessage({ type: 'DETECT_SERIES', url });
+  } catch {
+    return { isSeries: false };
+  }
+}
+
+/** Extract subtitles for all episodes in a series and download as ZIP */
+async function handleExtractSeries(tab, pages) {
+  const seriesPanel = $('seriesPanel');
+  const progress = $('progress');
+  const progressFill = $('progressFill');
+  const progressText = $('progressText');
+  const resultPanel = $('resultPanel');
+  const errorMsg = $('errorMsg');
+  const cancelBtn = $('cancelBtn');
+
+  // Disable buttons
+  $('extractCurrentBtn').disabled = true;
+  $('extractSeriesBtn').disabled = true;
+  if ($('asrBtn')) $('asrBtn').disabled = true;
+  errorMsg.hidden = true;
+  resultPanel.hidden = true;
+  progress.hidden = false;
+  progressFill.classList.add('indeterminate');
+  progressText.textContent = '正在检测系列信息...';
+  $('stayOnTabWarning').hidden = false;
+  cancelBtn.hidden = false;
+
+  // Clear any previous cancel flag
+  await chrome.storage.session.remove('series_cancelled');
+
+  // Listen for progress updates from background (via storage.session)
+  const progressListener = (changes, area) => {
+    if (area !== 'session' || !changes.series_progress) return;
+    const { current, total, part } = changes.series_progress.newValue;
+    progressFill.classList.remove('indeterminate');
+    const pct = Math.round((current / total) * 100);
+    progressFill.style.width = `${Math.min(pct, 60)}%`;
+    progressText.textContent = `正在提取第 ${current} / ${total} 集${part ? `：${part}` : ''}...`;
+  };
+  chrome.storage.onChanged.addListener(progressListener);
+
+  try {
+    const result = await sendMessage({
+      type: 'EXTRACT_SERIES',
+      bvid: currentBvid,
+      pages
+    });
+    chrome.storage.onChanged.removeListener(progressListener);
+
+    if (!result.results || result.results.length === 0) {
+      throw new Error('未能获取任何分P的字幕');
+    }
+
+    // Generate markdown files (individual + combined)
+    progressText.textContent = '正在生成 Markdown 文件...';
+    progressFill.style.width = '80%';
+
+    const files = generateSeriesMarkdownFiles(result);
+
+    // Create ZIP
+    progressText.textContent = '正在打包 ZIP...';
+    progressFill.style.width = '90%';
+
+    const zip = new JSZip();
+    for (const file of files) {
+      zip.file(file.name, file.content);
+    }
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+    // Download ZIP (try File System Access API first, fall back to anchor)
+    const zipFilename = `${sanitizeFilename(result.videoInfo.title)}.zip`;
+    if ('showSaveFilePicker' in window) {
+      try {
+        const handle = await window.showSaveFilePicker({
+          suggestedName: zipFilename,
+          types: [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(zipBlob);
+        await writable.close();
+      } catch (err) {
+        if (err.name !== 'AbortError') throw err;
+      }
+    } else {
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = zipFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }
+
+    // Show result summary
+    progress.hidden = true;
+    resultPanel.hidden = false;
+
+    const charCount = result.results.reduce((sum, r) =>
+      sum + (r.subtitles || []).reduce((s, sub) => s + sub.content.length, 0), 0);
+    $('resultStats').textContent = `全系列 ${result.total} 集（成功 ${result.successCount}，失败 ${result.failCount}）| 约 ${charCount} 字`;
+
+    // Preview: combined markdown
+    const combinedFile = files.find(f => f.name.startsWith('全系列'));
+    const previewContent = combinedFile ? combinedFile.content : '';
+    const previewText = previewContent.length > 3000
+      ? previewContent.slice(0, 3000) + '\n\n... (预览截断，下载查看完整内容)'
+      : previewContent;
+    $('preview').textContent = previewText;
+
+    sendCompletionNotification(result.videoInfo.title, '全系列字幕提取');
+  } catch (err) {
+    chrome.storage.onChanged.removeListener(progressListener);
+    progress.hidden = true;
+    showError(err.message);
+  } finally {
+    $('extractCurrentBtn').disabled = false;
+    $('extractSeriesBtn').disabled = false;
+    if ($('asrBtn')) $('asrBtn').disabled = false;
+    $('stayOnTabWarning').hidden = true;
+    cancelBtn.hidden = true;
+    await chrome.storage.session.remove(['series_progress', 'series_cancelled']);
+  }
+}
+
+/** Generate per-episode + combined markdown file data for series results */
+function generateSeriesMarkdownFiles(seriesResult) {
+  const { results, videoInfo, comments } = seriesResult;
+  const files = [];
+
+  // 1. Individual episode markdown files
+  for (const ep of results) {
+    const epTitle = `${videoInfo.title} - P${ep.p}${ep.part ? ` ${ep.part}` : ''}`;
+    const markdown = generateMarkdown({
+      title: epTitle,
+      url: `${videoInfo.url}?p=${ep.p}`,
+      upName: videoInfo.upName,
+      duration: '',
+      pubdate: videoInfo.pubdate,
+      subtitles: ep.hasSubtitle ? ep.subtitles : [],
+      comments: []
+    });
+
+    const epPart = ep.part || videoInfo.title;
+    const filename = `P${String(ep.p).padStart(2, '0')}_${sanitizeFilename(epPart)}.md`;
+    files.push({ name: filename, content: markdown });
+  }
+
+  // 2. Combined markdown for the whole series
+  const combinedLines = [];
+  combinedLines.push(`# ${videoInfo.title}（全系列）`);
+  combinedLines.push('');
+  combinedLines.push(`> UP主: ${videoInfo.upName} | 共 ${results.length} 集`);
+  combinedLines.push(`> 来源: ${videoInfo.url}`);
+  combinedLines.push(`> 提取时间: ${new Date().toISOString().slice(0, 10)}`);
+  combinedLines.push('');
+
+  for (const ep of results) {
+    combinedLines.push('---');
+    combinedLines.push('');
+    combinedLines.push(`## P${ep.p}${ep.part ? ` ${ep.part}` : ''}`);
+    combinedLines.push('');
+
+    if (!ep.hasSubtitle) {
+      combinedLines.push(`> ${ep.message || '无字幕'}`);
+      combinedLines.push('');
+      continue;
+    }
+
+    for (const sub of ep.subtitles) {
+      combinedLines.push(`[${formatTimestamp(sub.from)}] ${sub.content}`);
+    }
+    combinedLines.push('');
+  }
+
+  // Comments section (once for the whole series)
+  if (comments && comments.length > 0) {
+    combinedLines.push('---');
+    combinedLines.push('');
+    combinedLines.push('## 💬 视频评论');
+    combinedLines.push('');
+    for (const c of comments) {
+      const date = new Date(c.time * 1000).toISOString().slice(0, 19).replace('T', ' ');
+      combinedLines.push(`- **${c.user}** (${date})`);
+      combinedLines.push(`  ${c.content}`);
+      if (c.likes > 0) combinedLines.push(`  *👍 ${c.likes}*`);
+      combinedLines.push('');
+    }
+  }
+
+  const combinedName = `全系列_${sanitizeFilename(videoInfo.title)}.md`;
+  files.push({ name: combinedName, content: combinedLines.join('\n') });
+
+  return files;
 }

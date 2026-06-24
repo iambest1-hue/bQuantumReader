@@ -1,6 +1,6 @@
 // Background service worker
 
-import { getVideoInfo, getSubtitleList, getSubtitleContent, getAudioUrl, getComments, formatDuration } from '../shared/bilibili-api.js';
+import { getVideoInfo, getSubtitleList, getSubtitleContent, getAudioUrl, getComments, formatDuration, parseBilibiliUrl, getVideoPages } from '../shared/bilibili-api.js';
 import { generateMarkdown, sanitizeFilename } from '../shared/markdown.js';
 import { checkWhisperStatus } from '../shared/asr.js';
 import { getNativeClient, resetNativeClient } from '../shared/native_messaging.js';
@@ -8,6 +8,20 @@ import { getNativeClient, resetNativeClient } from '../shared/native_messaging.j
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'EXTRACT_SUBTITLE') {
     handleExtract(request.bvid, request.cid)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+
+  if (request.type === 'DETECT_SERIES') {
+    handleDetectSeries(request.url)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+
+  if (request.type === 'EXTRACT_SERIES') {
+    handleExtractSeries(request.bvid, request.pages)
       .then(sendResponse)
       .catch(err => sendResponse({ error: err.message }));
     return true;
@@ -89,6 +103,30 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+/** Extract subtitle data for a single episode (used by both single and series extraction) */
+async function extractSingleEpisode(bvid, cid, pageInfo = {}) {
+  const subtitleList = await getSubtitleList(bvid, cid);
+  let subtitles = [];
+  let hasSubtitle = false;
+  let message = '';
+
+  if (subtitleList.length > 0) {
+    const zhSub = subtitleList.find(s => s.lan === 'zh-CN' || s.lan === 'ai-ZH') || subtitleList[0];
+    subtitles = await getSubtitleContent(zhSub.subtitle_url);
+    hasSubtitle = true;
+  } else {
+    message = '该视频没有CC字幕，可尝试使用语音识别（需本地Whisper服务）';
+  }
+
+  return {
+    hasSubtitle,
+    subtitles,
+    part: pageInfo.part || '',
+    subtitleLangs: subtitleList.map(s => s.lan),
+    message
+  };
+}
+
 async function handleExtract(bvid, cid) {
   // Step 1: Get video info (for cid if missing, and metadata)
   const videoInfo = await getVideoInfo(bvid);
@@ -96,33 +134,27 @@ async function handleExtract(bvid, cid) {
   // Use provided cid or fall back to videoInfo.cid (first page)
   const effectiveCid = cid || videoInfo.cid;
 
-  // Step 2: Try to get CC subtitles
-  const subtitleList = await getSubtitleList(bvid, effectiveCid);
+  // Step 2: Try to get CC subtitles for this episode
+  const episodeResult = await extractSingleEpisode(bvid, effectiveCid);
 
   let result;
-  if (subtitleList.length === 0) {
+  if (!episodeResult.hasSubtitle) {
     result = {
       hasSubtitle: false,
       videoInfo: extractVideoMeta(videoInfo),
       subtitles: [],
-      message: '该视频没有CC字幕，可尝试使用语音识别（需本地Whisper服务）'
+      message: episodeResult.message
     };
   } else {
-    // Prefer Chinese subtitles, then any available
-    const zhSub = subtitleList.find(s => s.lan === 'zh-CN' || s.lan === 'ai-ZH') || subtitleList[0];
-
-    // Step 3: Download subtitle content
-    const subtitles = await getSubtitleContent(zhSub.subtitle_url);
-
     result = {
       hasSubtitle: true,
       videoInfo: extractVideoMeta(videoInfo),
-      subtitles,
-      subtitleLangs: subtitleList.map(s => s.lan)
+      subtitles: episodeResult.subtitles,
+      subtitleLangs: episodeResult.subtitleLangs
     };
   }
 
-  // Step 4: Fetch comments
+  // Step 3: Fetch comments
   try {
     const comments = await getComments(videoInfo.aid);
     result.comments = comments;
@@ -144,6 +176,84 @@ function extractVideoMeta(data) {
     pubdate: data.pubdate ? new Date(data.pubdate * 1000).toISOString().slice(0, 10) : '',
     url: `https://www.bilibili.com/video/${data.bvid}`,
     desc: data.desc || ''
+  };
+}
+
+/** Detect if the current video is part of a series/multi-P video */
+async function handleDetectSeries(url) {
+  const { bvid, p } = parseBilibiliUrl(url);
+  if (!bvid) return { isSeries: false };
+
+  const pages = await getVideoPages(bvid);
+  if (pages.length <= 1) {
+    return { isSeries: false, currentBvid: bvid };
+  }
+
+  return {
+    isSeries: true,
+    total: pages.length,
+    currentP: p,
+    pages,
+    currentBvid: bvid
+  };
+}
+
+/** Extract subtitles for all episodes in a series */
+async function handleExtractSeries(bvid, pages) {
+  const videoInfo = await getVideoInfo(bvid);
+  const meta = extractVideoMeta(videoInfo);
+
+  // Fetch comments once (comments are per-video, not per-page)
+  let comments = [];
+  try {
+    comments = await getComments(videoInfo.aid);
+  } catch (e) {
+    console.warn('获取评论失败:', e.message);
+  }
+
+  const results = [];
+
+  for (const page of pages) {
+    // Check cancel flag
+    const { series_cancelled } = await chrome.storage.session.get('series_cancelled');
+    if (series_cancelled) break;
+
+    // Update progress via session storage (popup will listen)
+    await chrome.storage.session.set({
+      series_progress: { current: results.length + 1, total: pages.length, part: page.part || '' }
+    });
+
+    try {
+      const episodeResult = await extractSingleEpisode(bvid, page.cid, page);
+      results.push({
+        p: page.page,
+        part: page.part || '',
+        hasSubtitle: episodeResult.hasSubtitle,
+        subtitles: episodeResult.subtitles,
+        subtitleLangs: episodeResult.subtitleLangs,
+        message: episodeResult.message
+      });
+    } catch (err) {
+      results.push({
+        p: page.page,
+        part: page.part || '',
+        hasSubtitle: false,
+        subtitles: [],
+        message: `提取失败: ${err.message}`
+      });
+    }
+  }
+
+  // Clear progress
+  await chrome.storage.session.remove('series_progress');
+
+  return {
+    results,
+    total: pages.length,
+    successCount: results.filter(r => r.hasSubtitle).length,
+    failCount: results.filter(r => !r.hasSubtitle).length,
+    videoInfo: meta,
+    comments
   };
 }
 

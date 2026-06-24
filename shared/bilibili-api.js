@@ -270,6 +270,40 @@ export async function getComments(aid, page = 1, pageSize = 20) {
   }));
 }
 
+/**
+ * Parse Bilibili video URL to extract bvid and p (page/episode) parameter.
+ * Handles URLs like:
+ *   https://www.bilibili.com/video/BVxxx
+ *   https://www.bilibili.com/video/BVxxx?p=2
+ *   https://www.bilibili.com/video/BVxxx?p=2&spm_id_from=...
+ *   https://www.bilibili.com/video/BVxxx?t=30
+ */
+export function parseBilibiliUrl(url) {
+  const result = { bvid: null, p: 1, searchParams: new URLSearchParams(), baseUrl: '' };
+  try {
+    const parsed = new URL(url);
+    // Check it's a bilibili video URL
+    const bvidMatch = parsed.pathname.match(/\/video\/(BV\w+)/);
+    if (!bvidMatch) return result;
+
+    result.bvid = bvidMatch[1];
+    result.searchParams = parsed.searchParams;
+    result.p = parseInt(parsed.searchParams.get('p'), 10) || 1;
+    // baseUrl: strip all query params
+    result.baseUrl = `${parsed.origin}${parsed.pathname}`;
+  } catch (_) { /* ignore */ }
+  return result;
+}
+
+/**
+ * Get all pages/episodes for a Bilibili video.
+ * Returns [{ cid, page, part, duration, first_frame }, ...]
+ */
+export async function getVideoPages(bvid) {
+  const info = await getVideoInfo(bvid);
+  return info.pages || [];
+}
+
 export function formatDuration(seconds) {
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);

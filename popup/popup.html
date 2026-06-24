@@ -33,6 +33,17 @@
         </div>
       </div>
 
+      <div id="seriesPanel" class="series-panel" hidden>
+        <div class="series-info">
+          <span class="series-icon">📑</span>
+          检测到 <span id="seriesTotal">0</span> 集分P系列视频
+        </div>
+        <div class="series-actions">
+          <button id="extractCurrentBtn" class="btn btn-primary">📝 仅提取当前视频</button>
+          <button id="extractSeriesBtn" class="btn btn-series">📚 提取全系列</button>
+        </div>
+      </div>
+
       <div class="actions">
         <button id="extractBtn" class="btn btn-primary">
           <span class="btn-icon">📝</span> 提取字幕
@@ -71,6 +82,7 @@
     </div>
   </div>
 
+  <script src="../lib/jszip.min.js"></script>
   <script src="popup.js" type="module"></script>
 </body>
 </html>

@@ -113,6 +113,50 @@ header h1 {
   background: #e8658a;
 }
 
+.btn-series {
+  background: #fb7299;
+  color: white;
+}
+
+.btn-series:hover:not(:disabled) {
+  background: #e8658a;
+}
+
+.btn-series:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Series panel */
+.series-panel {
+  background: linear-gradient(135deg, #fff0f5, #ffe4ec);
+  border: 1.5px solid #fb7299;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 12px;
+}
+
+.series-info {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d94f7a;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.series-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.series-actions .btn {
+  flex: 1;
+  font-size: 13px;
+  padding: 7px 12px;
+}
+
 .btn-secondary {
   background: #f0f0f0;
   color: #333;
