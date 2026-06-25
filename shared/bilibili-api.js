@@ -277,19 +277,18 @@ export async function getComments(aid, page = 1, pageSize = 20) {
  *   https://www.bilibili.com/video/BVxxx?p=2
  *   https://www.bilibili.com/video/BVxxx?p=2&spm_id_from=...
  *   https://www.bilibili.com/video/BVxxx?t=30
+ *   https://www.bilibili.com/list/watchlater?bvid=BVxxx&p=3
  */
 export function parseBilibiliUrl(url) {
   const result = { bvid: null, p: 1, searchParams: new URLSearchParams(), baseUrl: '' };
   try {
     const parsed = new URL(url);
-    // Check it's a bilibili video URL
-    const bvidMatch = parsed.pathname.match(/\/video\/(BV\w+)/);
-    if (!bvidMatch) return result;
-
-    result.bvid = bvidMatch[1];
+    // Try path first: /video/BVxxx, then query param: ?bvid=BVxxx
+    const pathBvid = parsed.pathname.match(/\/video\/(BV\w+)/);
+    const queryBvid = parsed.searchParams.get('bvid');
+    result.bvid = pathBvid?.[1] || queryBvid || null;
     result.searchParams = parsed.searchParams;
     result.p = parseInt(parsed.searchParams.get('p'), 10) || 1;
-    // baseUrl: strip all query params
     result.baseUrl = `${parsed.origin}${parsed.pathname}`;
   } catch (_) { /* ignore */ }
   return result;

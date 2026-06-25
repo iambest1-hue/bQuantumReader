@@ -27,6 +27,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.type === 'FETCH_VIDEO_INFO') {
+    fetchVideoInfoMeta(request.bvid)
+      .then(sendResponse)
+      .catch(err => sendResponse({ error: err.message }));
+    return true;
+  }
+
   if (request.type === 'DOWNLOAD_MARKDOWN') {
     handleDownload(request.markdown, request.filename)
       .then(() => sendResponse({ success: true }))
@@ -177,6 +184,13 @@ function extractVideoMeta(data) {
     url: `https://www.bilibili.com/video/${data.bvid}`,
     desc: data.desc || ''
   };
+}
+
+/** Fetch only video metadata (title, upName, duration) via API — used when content script is unavailable */
+async function fetchVideoInfoMeta(bvid) {
+  const videoInfo = await getVideoInfo(bvid);
+  const meta = extractVideoMeta(videoInfo);
+  return { title: meta.title, upName: meta.upName, duration: meta.duration };
 }
 
 /** Detect if the current video is part of a series/multi-P video */

@@ -6,6 +6,8 @@ const $ = id => document.getElementById(id);
 let currentResult = null;
 let whisperServerUrl = '';
 let currentBvid = null;
+let currentTab = null;      // Track the active tab for button handlers
+let seriesPages = null;     // Cache series pages after detection
 let _asrCancelFlag = false;
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -28,22 +30,75 @@ document.addEventListener('DOMContentLoaded', async () => {
     return;
   }
 
-  if (!tab.url || !tab.url.includes('bilibili.com/video/')) {
+  await initPopup(tab);
+
+  // Bind buttons (uses currentTab — survives refresh)
+  $('extractBtn').addEventListener('click', () => currentTab && handleExtract(currentTab));
+  $('asrBtn').addEventListener('click', () => currentTab && handleASR(currentTab));
+  $('extractCurrentBtn').addEventListener('click', () => currentTab && handleExtract(currentTab));
+  $('extractSeriesBtn').addEventListener('click', () => currentTab && seriesPages && handleExtractSeries(currentTab, seriesPages));
+  $('downloadBtn').addEventListener('click', handleDownload);
+  $('cancelBtn').addEventListener('click', handleCancel);
+  $('settingsBtn').addEventListener('click', () => { chrome.runtime.openOptionsPage(); });
+  $('helpBtn').addEventListener('click', () => {
+    chrome.windows.create({ url: 'help/help.html', type: 'popup', width: 720, height: 640 });
+  });
+  $('startServiceBtn').addEventListener('click', handleStartService);
+  $('refreshBtn').addEventListener('click', handleRefresh);
+
+  // Restore any existing ASR task state (if same video)
+  restoreAsrState();
+});
+
+/** Extract bvid from a bilibili URL (path or query param) */
+function extractBvid(url) {
+  if (!url) return null;
+  const pathMatch = url.match(/\/video\/(BV\w+)/);
+  if (pathMatch) return pathMatch[1];
+  const queryMatch = url.match(/[?&]bvid=(BV\w+)/);
+  return queryMatch?.[1] || null;
+}
+
+/** Initialize/reset the popup UI for a given tab */
+async function initPopup(tab) {
+  currentTab = tab;
+  currentResult = null;
+  seriesPages = null;
+
+  // Reset UI to ready state
+  $('mainPanel').hidden = false;
+  $('notBilibili').hidden = true;
+  $('progress').hidden = true;
+  $('resultPanel').hidden = true;
+  $('errorMsg').hidden = true;
+  $('stayOnTabWarning').hidden = true;
+  $('cancelBtn').hidden = true;
+  $('videoTitle').textContent = '加载中...';
+  $('videoUp').textContent = '';
+  $('videoDuration').textContent = '';
+
+  // Accept any bilibili URL that contains a bvid (path or query)
+  currentBvid = extractBvid(tab.url);
+  if (!tab.url || !tab.url.includes('bilibili.com') || !currentBvid) {
     $('notBilibili').hidden = false;
     $('mainPanel').hidden = true;
     return;
   }
 
-  $('notBilibili').hidden = true;
-  $('mainPanel').hidden = false;
-
-  // Extract bvid from URL immediately (not async, available right away)
-  currentBvid = tab.url.match(/\/video\/(BV\w+)/)?.[1] || null;
-
-  // Get video info from content script (async, for display)
-  chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_INFO' }, (response) => {
+  // Get video info — try content script first, fall back to API
+  chrome.tabs.sendMessage(tab.id, { type: 'GET_VIDEO_INFO' }, async (response) => {
     if (chrome.runtime.lastError || !response) {
-      $('videoTitle').textContent = '无法获取视频信息';
+      // Content script not available (e.g. watch-later page) → use API
+      try {
+        const meta = await sendMessage({ type: 'FETCH_VIDEO_INFO', bvid: currentBvid });
+        if (!meta.error) {
+          $('videoTitle').textContent = meta.title || '未知标题';
+          $('videoUp').textContent = meta.upName ? `UP: ${meta.upName}` : '';
+          $('videoDuration').textContent = meta.duration || '';
+          return;
+        }
+      } catch {}
+      $('videoTitle').textContent = '无法获取视频信息，请点击 🔄 刷新';
       return;
     }
     $('videoTitle').textContent = response.title || '未知标题';
@@ -58,40 +113,67 @@ document.addEventListener('DOMContentLoaded', async () => {
   const seriesInfo = await detectSeries(tab.url);
 
   if (seriesInfo.isSeries) {
-    // Series detected: show series-specific UI, hide single extract button
     $('extractBtn').hidden = true;
     $('seriesPanel').hidden = false;
     $('seriesTotal').textContent = seriesInfo.total;
-
-    $('extractCurrentBtn').addEventListener('click', () => handleExtract(tab));
-    $('extractSeriesBtn').addEventListener('click', () => handleExtractSeries(tab, seriesInfo.pages));
+    seriesPages = seriesInfo.pages;
   } else {
-    // Single video: keep existing extract button
     $('seriesPanel').hidden = true;
     $('extractBtn').hidden = false;
-    $('extractBtn').addEventListener('click', () => handleExtract(tab));
+    seriesPages = null;
   }
+}
 
-  // Buttons shared by both modes
-  $('asrBtn').addEventListener('click', () => handleASR(tab));
-  $('downloadBtn').addEventListener('click', handleDownload);
-  $('cancelBtn').addEventListener('click', handleCancel);
-  $('settingsBtn').addEventListener('click', () => {
-    chrome.runtime.openOptionsPage();
-  });
-  $('helpBtn').addEventListener('click', () => {
-    chrome.windows.create({
-      url: 'help/help.html',
-      type: 'popup',
-      width: 720,
-      height: 640,
-    });
-  });
-  $('startServiceBtn').addEventListener('click', handleStartService);
+/** Refresh: find the current bilibili video tab and re-initialize */
+async function handleRefresh() {
+  $('refreshBtn').disabled = true;
 
-  // Restore any existing ASR task state (if same video)
-  restoreAsrState();
-});
+  try {
+    // 1) Find the active tab in the focused normal browser window
+    //    (scans all windows since the popup window itself isn't 'normal')
+    const wins = await chrome.windows.getAll({ populate: true });
+    for (const win of wins) {
+      if (win.type !== 'normal') continue;
+      const tab = win.tabs?.find(t => t.active);
+      if (tab && tab.url?.includes('bilibili.com') && extractBvid(tab.url)) {
+        await chrome.storage.session.set({ activeTabId: tab.id });
+        await initPopup(tab);
+        $('refreshBtn').disabled = false;
+        return;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // 2) Fallback: stored activeTabId (user might have navigated same tab)
+  try {
+    const { activeTabId } = await chrome.storage.session.get('activeTabId');
+    if (activeTabId) {
+      const tab = await chrome.tabs.get(activeTabId);
+      if (extractBvid(tab.url)) {
+        await initPopup(tab);
+        $('refreshBtn').disabled = false;
+        return;
+      }
+    }
+  } catch { /* tab gone */ }
+
+  // 3) Last resort: any bilibili tab with a bvid
+  try {
+    const allTabs = await chrome.tabs.query({ url: '*://www.bilibili.com/*' });
+    const tab = allTabs.find(t => extractBvid(t.url));
+    if (tab) {
+      await chrome.storage.session.set({ activeTabId: tab.id });
+      await initPopup(tab);
+      $('refreshBtn').disabled = false;
+      return;
+    }
+  } catch { /* fall through */ }
+
+  $('notBilibili').hidden = false;
+  $('mainPanel').hidden = true;
+  $('notBilibili').textContent = '未找到B站视频页面，请先打开一个视频';
+  $('refreshBtn').disabled = false;
+}
 
 function loadWhisperStatus() {
   chrome.storage.sync.get(['whisperServerUrl'], async (settings) => {
@@ -181,7 +263,13 @@ async function handleExtract(tab) {
   $('stayOnTabWarning').hidden = false;
 
   try {
-    const videoInfo = await getVideoInfoFromPage(tab);
+    let videoInfo;
+    try {
+      videoInfo = await getVideoInfoFromPage(tab);
+    } catch {
+      // Content script not available — use bvid from URL
+      videoInfo = { bvid: currentBvid, cid: null };
+    }
     if (!videoInfo.bvid) throw new Error('无法获取视频BV号');
 
     progressText.textContent = `正在获取「${$('videoTitle').textContent}」的字幕...`;
@@ -260,7 +348,12 @@ async function handleASR(tab) {
   _asrCancelFlag = false;
 
   try {
-    const videoInfo = await getVideoInfoFromPage(tab);
+    let videoInfo;
+    try {
+      videoInfo = await getVideoInfoFromPage(tab);
+    } catch {
+      videoInfo = { bvid: currentBvid, cid: null };
+    }
     if (!videoInfo.bvid) throw new Error('无法获取视频BV号');
     currentBvid = videoInfo.bvid;
 
@@ -945,30 +1038,21 @@ async function handleExtractSeries(tab, pages) {
     }
     const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-    // Download ZIP (try File System Access API first, fall back to anchor)
+    // Download ZIP via blob URL + chrome.downloads (no user gesture needed)
     const zipFilename = `${sanitizeFilename(result.videoInfo.title)}.zip`;
-    if ('showSaveFilePicker' in window) {
-      try {
-        const handle = await window.showSaveFilePicker({
-          suggestedName: zipFilename,
-          types: [{ description: 'ZIP Archive', accept: { 'application/zip': ['.zip'] } }]
-        });
-        const writable = await handle.createWritable();
-        await writable.write(zipBlob);
-        await writable.close();
-      } catch (err) {
-        if (err.name !== 'AbortError') throw err;
-      }
-    } else {
-      const url = URL.createObjectURL(zipBlob);
+    const url = URL.createObjectURL(zipBlob);
+    try {
+      await chrome.downloads.download({ url, filename: zipFilename, saveAs: true });
+    } catch {
+      // chrome.downloads may not accept blob URLs in some Chrome versions — fall back to anchor
       const a = document.createElement('a');
       a.href = url;
       a.download = zipFilename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
     }
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
 
     // Show result summary
     progress.hidden = true;
