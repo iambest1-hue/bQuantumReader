@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "b量子速读",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "从B站视频提取内容，整理为结构化Markdown，打造个人知识库",
   "permissions": [
     "activeTab",
